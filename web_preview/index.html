@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>MacroVault</title>
+<style>
+  :root{
+    --bg:#0E1217; --surf:#161C24; --surfH:#1C2530; --accent:#BEF264; --ink:#0E1217;
+    --pro:#2DD4BF; --carb:#F6B73C; --fat:#A78BFA; --water:#38BDF8;
+    --text:#E7ECEF; --muted:#8A949C; --coral:#F6735A;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; background:#05080b; color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .phone{max-width:430px; margin:0 auto; min-height:100vh; background:var(--bg);
+    display:flex; flex-direction:column; position:relative;}
+  header{display:flex; justify-content:space-between; align-items:center; padding:16px 18px 8px;}
+  header .t{font-size:18px; font-weight:700;}
+  header .d{color:var(--muted); font-size:13px;}
+  main{flex:1; overflow:auto; padding:8px 16px 96px;}
+  .card{background:var(--surf); border-radius:20px; padding:16px; margin-bottom:14px;}
+  .row{display:flex; align-items:center;}
+  .bar{height:8px; background:var(--surfH); border-radius:6px; overflow:hidden; margin-top:5px;}
+  .bar > i{display:block; height:8px; border-radius:6px; transition:width .45s cubic-bezier(.2,.8,.2,1);}
+  .mealgrid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .meal{background:var(--surf); border-radius:18px; padding:13px 15px; display:flex;
+    justify-content:space-between; align-items:center; cursor:pointer; transition:transform .12s;}
+  .meal:active{transform:scale(.97);}
+  .meal .k{font-weight:800; font-size:18px;}
+  .qa{display:flex; gap:10px; margin:6px 0 4px;}
+  .qa button{flex:1; background:var(--surf); border:none; color:#C9D2D8; border-radius:16px;
+    padding:12px 4px; font-size:11px; cursor:pointer;}
+  .qa button.primary{background:var(--accent); color:var(--ink); font-weight:700;}
+  .qa button i{font-size:18px; display:block; margin-bottom:3px;}
+  .tabbar{position:sticky; bottom:0; display:flex; background:var(--bg);
+    border-top:.5px solid var(--surfH);}
+  .tabbar button{flex:1; background:none; border:none; color:#5C6670; padding:9px 0 11px;
+    font-size:11px; cursor:pointer;}
+  .tabbar button i{font-size:20px; display:block; margin-bottom:2px;}
+  .tabbar button.on{color:var(--accent);}
+  .sheet-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:flex-end;
+    justify-content:center; z-index:20;}
+  .sheet-bg.show{display:flex;}
+  .sheet{width:100%; max-width:430px; background:var(--bg); border-radius:24px 24px 0 0;
+    padding:10px 16px 24px; max-height:88vh; overflow:auto;}
+  .grab{width:44px; height:5px; background:var(--surfH); border-radius:3px; margin:6px auto 12px;}
+  .fitem{display:flex; justify-content:space-between; align-items:center; padding:11px 4px;
+    border-bottom:.5px solid var(--surfH); cursor:pointer;}
+  .chip{display:inline-block; padding:7px 13px; border-radius:12px; background:var(--surfH);
+    color:var(--text); font-size:13px; margin:0 6px 6px 0; cursor:pointer; border:none;}
+  .chip.on{background:var(--accent); color:var(--ink); font-weight:700;}
+  input,button{font-family:inherit;}
+  .in{width:100%; background:var(--surfH); border:none; color:var(--text); border-radius:14px;
+    padding:13px 14px; font-size:15px; outline:none;}
+  .btn{width:100%; background:var(--accent); color:var(--ink); border:none; border-radius:16px;
+    padding:15px; font-weight:700; font-size:16px; cursor:pointer;}
+  .ghost{background:none; border:.5px solid var(--surfH); color:var(--text); border-radius:14px;
+    padding:11px; cursor:pointer; width:100%;}
+  .muted{color:var(--muted);} .sm{font-size:12px;} .star{color:var(--carb);}
+  .toast{position:fixed; left:50%; bottom:84px; transform:translateX(-50%); background:var(--accent);
+    color:var(--ink); font-weight:700; padding:10px 16px; border-radius:14px; opacity:0;
+    transition:opacity .25s; z-index:40; pointer-events:none; font-size:13px;}
+  .toast.show{opacity:1;}
+  h3{font-size:16px; margin:6px 2px 10px;}
+  .legend{display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; font-size:12px; color:var(--muted);}
+  .legend i{width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:4px;}
+</style>
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/dist/tabler-icons.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="phone">
+  <header>
+    <div><div class="t" id="hTitle">Today</div><div class="d" id="hSub">Mon, Jun 16</div></div>
+    <div class="muted"><i class="ti ti-flame"></i></div>
+  </header>
+  <main>
+    <div id="view-today"></div>
+    <div id="view-progress" style="display:none"></div>
+    <div id="view-vault" style="display:none"></div>
+    <div id="view-more" style="display:none"></div>
+  </main>
+  <div class="tabbar">
+    <button data-tab="today" class="on"><i class="ti ti-home"></i>Today</button>
+    <button data-tab="progress"><i class="ti ti-chart-line"></i>Progress</button>
+    <button data-tab="vault"><i class="ti ti-lock"></i>Vault</button>
+    <button data-tab="more"><i class="ti ti-dots"></i>More</button>
+  </div>
+</div>
+<div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const C=2*Math.PI*52;
+const $=s=>document.querySelector(s);
+const fmt=n=>Math.round(n).toLocaleString();
+const today=()=> new Date().toISOString().slice(0,10);
+
+const GOAL={cal:2200,p:176,c:200,f:61};
+const SLOTS=[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snack','Snacks']];
+const DB=[
+  ['Chicken breast','100 g',165,31,0,3.6],['White rice','1 cup',205,4,45,0.4],
+  ['Greek yogurt','170 g',100,17,6,0.7],['Banana','1 medium',105,1,27,0.4],
+  ['Egg','1 large',72,6,0.4,5],['Salmon fillet','100 g',208,20,0,13],
+  ['Oats','40 g',150,5,27,3],['Protein shake','1 scoop',160,30,5,2.5],
+  ['Almonds','28 g',164,6,6,14],['Olive oil','1 tbsp',119,0,0,14],
+  ['Broccoli','1 cup',55,3.7,11,0.6],['Ground beef 90/10','100 g',176,20,0,10],
+  ['Apple','1 medium',95,0.5,25,0.3],['Peanut butter','1 tbsp',94,4,3,8],
+  ['Sweet potato','1 medium',112,2,26,0.1],['Cottage cheese','100 g',98,11,3.4,4.3],
+];
+const METRICS=[
+  {key:'bench',name:'Bench press 1RM',unit:'kg',hi:true,color:'#BEF264'},
+  {key:'squat',name:'Squat 1RM',unit:'kg',hi:true,color:'#F6B73C'},
+  {key:'deadlift',name:'Deadlift 1RM',unit:'kg',hi:true,color:'#A78BFA'},
+  {key:'bodyfat',name:'Body fat',unit:'%',hi:false,color:'#F6735A'},
+];
+
+const G=a=>({name:a[0],brand:'',serv:a[1],kcal:a[2],p:a[3],c:a[4],f:a[5]});
+const fkey=f=>f.name+'|'+(f.brand||'');
+const dispName=f=>f.brand?`${f.name} · ${f.brand}`:f.name;
+
+// Live branded-food search via Open Food Facts (same source the native app uses).
+async function offSearch(q){
+  try{
+    const u='https://world.openfoodfacts.org/cgi/search.pl?search_terms='+encodeURIComponent(q)+
+      '&search_simple=1&action=process&json=1&page_size=25'+
+      '&fields=product_name,brands,nutriments,serving_quantity';
+    const r=await fetch(u);
+    if(!r.ok)return[];
+    const j=await r.json();
+    return (j.products||[]).map(p=>{
+      const n=p.nutriments||{}; const name=(p.product_name||'').trim();
+      const kc=n['energy-kcal_100g']; if(!name||kc==null)return null;
+      const sq=p.serving_quantity?parseFloat(p.serving_quantity):null;
+      const fac=sq&&sq>0?sq/100:1;
+      return {name, brand:(p.brands||'').split(',')[0].trim(), off:true,
+        serv:sq?`1 serving (${Math.round(sq)} g)`:'100 g',
+        kcal:Math.round(kc*fac),
+        p:+(((n.proteins_100g||0))*fac).toFixed(1),
+        c:+(((n.carbohydrates_100g||0))*fac).toFixed(1),
+        f:+(((n.fat_100g||0))*fac).toFixed(1)};
+    }).filter(Boolean);
+  }catch(e){return[];}
+}
+
+let S=load();
+function load(){
+  const raw=localStorage.getItem('mv2');
+  if(raw) return JSON.parse(raw);
+  const seed={
+    meals:{breakfast:[],lunch:[],dinner:[],snack:[]},
+    usage:{}, water:0,
+    weight:[['2024-12-01',86.2],['2025-01-01',84.6],['2025-02-01',83.1],['2025-03-01',82.0],['2025-04-01',81.2],['2025-05-01',80.6]],
+    metrics:{bench:[['2024-12-01',80],['2025-02-01',88],['2025-04-01',96],['2025-05-01',102]],
+             bodyfat:[['2024-12-01',21.5],['2025-02-01',19.2],['2025-04-01',17.1],['2025-05-01',16.0]],
+             squat:[],deadlift:[]},
+    meas:{waist:84,neck:38,hips:0,height:180,sex:'male'},
+    capsules:[{day:'2025-05-04',title:'Best week',tags:['best week','high protein'],kcal:2180,protein:172}]
+  };
+  log1(seed,'breakfast','Greek yogurt');log1(seed,'breakfast','Oats');log1(seed,'lunch','Chicken breast');
+  log1(seed,'lunch','White rice');log1(seed,'snack','Protein shake');
+  seed.water=1500;
+  localStorage.setItem('mv2',JSON.stringify(seed));
+  return seed;
+}
+function save(){localStorage.setItem('mv2',JSON.stringify(S));}
+function log1(state,slot,name){const f=G(DB.find(d=>d[0]===name));
+  state.meals[slot].push({name:f.name,brand:f.brand,kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1});
+  const k=fkey(f);state.usage[k]=state.usage[k]||{f,count:0,last:0,fav:false};
+  state.usage[k].count++;state.usage[k].last=Date.now();}
+
+function totals(){let t={kcal:0,p:0,c:0,f:0};for(const s in S.meals)S.meals[s].forEach(x=>{t.kcal+=x.kcal*x.qty;t.p+=x.p*x.qty;t.c+=x.c*x.qty;t.f+=x.f*x.qty;});return t;}
+function mealKcal(s){return S.meals[s].reduce((a,x)=>a+x.kcal*x.qty,0);}
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1400);}
+function openSheet(html){$('#sheet').innerHTML='<div class="grab"></div>'+html;$('#sheetBg').classList.add('show');}
+function closeSheet(){$('#sheetBg').classList.remove('show');}
+$('#sheetBg').addEventListener('click',e=>{if(e.target.id==='sheetBg')closeSheet();});
+
+function arc(len,off,color){const l=Math.max(0,len);
+  return `<circle cx="60" cy="60" r="52" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round"
+    stroke-dasharray="${l} ${C-l}" stroke-dashoffset="${off}"/>`;}
+
+function donut(t){
+  const pc=t.p*4,cc=t.c*4,fc=t.f*9,tot=pc+cc+fc;
+  let arcs='';
+  if(tot<=0){arcs=`<circle cx="60" cy="60" r="52" fill="none" stroke="#1C2530" stroke-width="14"/>`;}
+  else{const lp=C*pc/tot,lc=C*cc/tot,lf=C*fc/tot;
+    arcs=`<circle cx="60" cy="60" r="52" fill="none" stroke="#1C2530" stroke-width="14"/>`+
+      arc(lp,0,'#2DD4BF')+arc(lc,-lp,'#F6B73C')+arc(lf,-(lp+lc),'#A78BFA');}
+  return `<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="calories left">
+    <g transform="rotate(-90 60 60)">${arcs}</g>
+    <text x="60" y="56" text-anchor="middle" fill="#E7ECEF" font-size="26" font-weight="800">${fmt(GOAL.cal-t.kcal)}</text>
+    <text x="60" y="74" text-anchor="middle" fill="#8A949C" font-size="11">cal left</text></svg>`;
+}
+function barRow(label,val,target,color){
+  return `<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px">
+    <span style="color:${color}">${label}</span><span class="muted">${fmt(val)} / ${target} g</span></div>
+    <div class="bar"><i style="width:${Math.min(100,val/target*100)}%;background:${color}"></i></div></div>`;
+}
+
+function renderToday(){
+  const t=totals();
+  let meals='';
+  SLOTS.forEach(([k,name])=>{const n=S.meals[k].length;const kc=mealKcal(k);
+    meals+=`<div class="meal" onclick="openMeal('${k}')"><div><div>${name}</div>
+      <div class="muted sm">${n?n+' item'+(n>1?'s':''):'add'}</div></div>
+      <div style="text-align:right"><div class="k" style="color:${kc?'#BEF264':'#5C6670'}">${fmt(kc)}</div>
+      <i class="ti ti-${kc?'chevron-right':'plus'}" style="color:${kc?'#5C6670':'#BEF264'}"></i></div></div>`;});
+  const w=S.weight.length?S.weight[S.weight.length-1][1]:null;
+  $('#view-today').innerHTML=`
+    <div class="card"><div class="row" style="gap:14px">
+      ${donut(t)}
+      <div style="flex:1">
+        ${barRow('Protein',t.p,GOAL.p,'#2DD4BF')}
+        ${barRow('Carbs',t.c,GOAL.c,'#F6B73C')}
+        ${barRow('Fat',t.f,GOAL.f,'#A78BFA')}
+      </div></div></div>
+    <div class="qa">
+      <button onclick="toast('Scan is native-only in the real app')"><i class="ti ti-barcode"></i>Scan</button>
+      <button onclick="toast('Snap is native-only in the real app')"><i class="ti ti-camera"></i>Snap</button>
+      <button onclick="usuals()"><i class="ti ti-replace"></i>Usuals</button>
+      <button class="primary" onclick="addFood('snack')"><i class="ti ti-plus"></i>Add</button>
+    </div>
+    <div class="row" style="justify-content:space-between;margin:14px 2px 10px">
+      <h3 style="margin:0">Meals</h3><span class="muted sm">${fmt(t.kcal)} kcal total</span></div>
+    <div class="mealgrid">${meals}</div>
+    <div class="row" style="gap:12px;margin-top:14px">
+      <div class="card" style="flex:1;margin:0"><div class="muted sm">Water</div>
+        <div style="font-size:22px;font-weight:800;color:#38BDF8">${(S.water/1000).toFixed(2)} L</div>
+        <div class="row" style="gap:8px;margin-top:8px">
+          <button class="ghost" onclick="water(250)">+250</button>
+          <button class="ghost" onclick="water(-250)">−250</button></div></div>
+      <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="logWeight()"><div class="muted sm">Weight trend</div>
+        <div style="font-size:22px;font-weight:800">${w?w.toFixed(1)+' kg':'—'}</div>
+        <div class="sm" style="color:#BEF264">tap to log →</div></div>
+    </div>`;
+}
+
+window.openMeal=k=>{
+  const name=SLOTS.find(s=>s[0]===k)[1];
+  let items=S.meals[k].map((x,i)=>`<div class="fitem"><div><div>${x.name}${x.brand?' · '+x.brand:''}</div>
+    <div class="muted sm">${x.qty} serving · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}</div></div>
+    <i class="ti ti-x muted" onclick="delItem('${k}',${i})"></i></div>`).join('')||'<div class="muted" style="padding:14px 2px">Nothing logged yet.</div>';
+  openSheet(`<h3>${name} · ${fmt(mealKcal(k))} kcal</h3>${items}
+    <button class="btn" style="margin-top:14px" onclick="addFood('${k}')"><i class="ti ti-plus"></i> Add food</button>`);
+};
+window.delItem=(k,i)=>{S.meals[k].splice(i,1);save();renderToday();openMeal(k);toast('Removed');};
+
+let activeSlot='snack';
+let DISPLAY=[];        // foods currently shown in the sheet, indexed for logging
+let searchSeq=0;       // guards against out-of-order async results
+window.addFood=k=>{activeSlot=k;renderAddSheet('');};
+
+function recents(){return Object.values(S.usage)
+  .sort((a,b)=>(b.fav-a.fav)||(b.last-a.last)).map(u=>u.f);}
+
+function rowHtml(f){
+  const i=DISPLAY.push(f)-1;
+  const fav=(S.usage[fkey(f)]||{}).fav;
+  return `<div class="fitem" onclick="logIdx(${i})">
+    <div><div>${fav?'<i class="ti ti-star star"></i> ':''}${dispName(f)}</div>
+    <div class="muted sm">${f.kcal} kcal · ${f.serv}${f.off?' · <span style="color:#5C6670">database</span>':''}</div></div>
+    <i class="ti ti-plus" style="color:#BEF264"></i></div>`;
+}
+
+function renderAddSheet(q){
+  DISPLAY=[];
+  const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderAddSheet(document.getElementById('q').value)">${n}</button>`).join('');
+  let list;
+  if(q.trim()){
+    const r=DB.map(G).filter(f=>f.name.toLowerCase().includes(q.toLowerCase()));
+    list='<div class="muted sm" style="margin:6px 2px">Your foods</div>'+
+      (r.map(rowHtml).join('')||'<div class="muted sm" style="padding:6px 2px">None saved yet</div>');
+  }else{
+    const rec=recents();
+    list=(rec.length?'<div class="muted sm" style="margin:6px 2px">Recent & favorites — tap to log again</div>'+rec.map(rowHtml).join(''):'')
+      +'<div class="muted sm" style="margin:10px 2px">Starter foods</div>'+DB.map(G).map(rowHtml).join('');
+  }
+  openSheet(`<h3>Add food</h3><div>${chips}</div>
+    <input id="q" class="in" placeholder="Search Oikos, protein powder, a brand…" value="${q.replace(/"/g,'&quot;')}" oninput="renderAddSheet(this.value)" autofocus style="margin:8px 0 4px">
+    <div style="max-height:46vh;overflow:auto">${list}<div id="offBox"></div></div>
+    <button class="ghost" style="margin-top:10px" onclick="quickAdd()"><i class="ti ti-bolt"></i> Quick add calories</button>`);
+  const qi=document.getElementById('q');if(qi){qi.focus();qi.setSelectionRange(q.length,q.length);}
+  if(q.trim().length>=2){
+    const seq=++searchSeq;
+    const box=document.getElementById('offBox');
+    box.innerHTML='<div class="muted sm" style="padding:10px 2px">Searching food databases…</div>';
+    offSearch(q.trim()).then(res=>{
+      if(seq!==searchSeq)return;
+      const b=document.getElementById('offBox'); if(!b)return;
+      if(!res.length){b.innerHTML='<div class="muted sm" style="padding:10px 2px">No branded matches online.</div>';return;}
+      b.innerHTML='<div class="muted sm" style="margin:10px 2px">Branded — Open Food Facts</div>'+res.map(rowHtml).join('');
+    });
+  }
+}
+
+window.logIdx=i=>{
+  const f=DISPLAY[i]; if(!f)return;
+  S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1});
+  const k=fkey(f); S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};
+  S.usage[k].f=f; S.usage[k].count++; S.usage[k].last=Date.now();
+  save();renderToday();closeSheet();toast('Logged '+dispName(f));
+};
+window.quickAdd=()=>{const k=parseFloat(prompt('Calories to quick-add:','300'));if(!k)return;
+  S.meals[activeSlot].push({name:'Quick add',brand:'',kcal:k,p:0,c:0,f:0,qty:1});save();renderToday();closeSheet();toast('Quick added '+fmt(k)+' kcal');};
+window.usuals=()=>{openSheet(`<h3>Your usuals</h3>
+  <div class="fitem" onclick="logUsual()"><div><div><i class="ti ti-star star"></i> My usual breakfast</div>
+  <div class="muted sm">Greek yogurt + Oats · 250 kcal</div></div><i class="ti ti-plus" style="color:#BEF264"></i></div>`);};
+window.logUsual=()=>{['Greek yogurt','Oats'].forEach(n=>{const f=G(DB.find(d=>d[0]===n));S.meals.breakfast.push({name:f.name,brand:'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1});});
+  save();renderToday();closeSheet();toast('Logged usual breakfast');};
+window.water=ml=>{S.water=Math.max(0,S.water+ml);save();renderToday();};
+window.logWeight=()=>{const v=parseFloat(prompt('Log weight (kg):',S.weight.length?S.weight[S.weight.length-1][1]:'80'));
+  if(!v)return;S.weight.push([today(),v]);save();renderToday();toast('Weight logged');};
+
+function norm(arr){const v=arr.map(x=>x[1]);const mn=Math.min(...v),mx=Math.max(...v);const r=(mx-mn)||1;
+  return arr.map(x=>[x[0],(x[1]-mn)/r]);}
+function renderProgress(){
+  const series=[];
+  if(S.weight.length)series.push({name:'Weight (trend)',unit:'kg',hi:false,color:'#2DD4BF',dash:true,pts:S.weight});
+  METRICS.forEach(m=>{if(S.metrics[m.key]&&S.metrics[m.key].length)series.push({...m,pts:S.metrics[m.key]});});
+  const days=[...new Set(series.flatMap(s=>s.pts.map(p=>p[0])))].sort();
+  const xi=Object.fromEntries(days.map((d,i)=>[d,i]));
+  const W=300,H=150;
+  let lines='';
+  series.forEach(s=>{const ns=norm(s.pts);
+    const pts=ns.map(p=>`${(days.length<2?0:xi[p[0]]/(days.length-1))*W},${H-10-p[1]*(H-30)}`).join(' ');
+    lines+=`<polyline fill="none" stroke="${s.color}" stroke-width="2.5" ${s.dash?'stroke-dasharray="5 4"':''} points="${pts}"/>`;});
+  const grid=[40,80,120].map(y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#1C2530"/>`).join('');
+  const legend=series.map(s=>`<span><i style="background:${s.color}"></i>${s.name} ${ (s.pts[s.pts.length-1][1]-s.pts[0][1]>0)===s.hi?'↑':'↓'}</span>`).join('');
+  let cards=series.filter(s=>s.unit!=='kg'||s.name!=='Weight (trend)').map(s=>{
+    const last=s.pts[s.pts.length-1][1],first=s.pts[0][1],delta=last-first;
+    const good=(delta>0)===s.hi;
+    return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <div style="width:8px;height:36px;border-radius:4px;background:${s.color}"></div>
+      <div style="flex:1"><div>${s.name}</div><div class="sm" style="color:${good?'#BEF264':'#8A949C'}">
+        ${last.toFixed(1)} ${s.unit} · ${delta>=0?'+':''}${delta.toFixed(1)} since start</div></div>
+      ${s.key&&s.key!=='weight'?`<i class="ti ti-circle-plus" style="font-size:24px;color:#BEF264" onclick="logMetric('${s.key}')"></i>`:''}</div>`;}).join('');
+  $('#view-progress').innerHTML=`
+    <div class="card"><h3 style="margin-top:0">Everything on one timeline</h3>
+      <svg width="100%" height="150" viewBox="0 0 300 150" role="img" aria-label="overlaid progress">${grid}${lines}</svg>
+      <div class="legend">${legend}</div></div>
+    <h3>Metrics</h3>${cards}
+    <div class="row" style="gap:10px">
+      <button class="ghost" onclick="logMetric('bench')"><i class="ti ti-plus"></i> Log a lift</button>
+      <button class="ghost" onclick="estimateBF()"><i class="ti ti-ruler"></i> Estimate body fat</button>
+    </div>`;
+}
+window.logMetric=key=>{const m=METRICS.find(x=>x.key===key);
+  if(key==='bodyfat')return estimateBF();
+  const v=parseFloat(prompt('Log '+m.name+' ('+m.unit+'):',''));if(!v)return;
+  S.metrics[key]=S.metrics[key]||[];S.metrics[key].push([today(),v]);save();renderProgress();toast(m.name+' logged');};
+window.estimateBF=()=>{
+  openSheet(`<h3>Estimate body fat — Navy method</h3>
+    <div class="muted sm" style="margin-bottom:10px">Uses your measurements + height. ${S.meas.sex==='female'?'Hip required.':''}</div>
+    <div class="row" style="gap:8px">
+      <div style="flex:1"><div class="muted sm">Waist (cm)</div><input id="mw" class="in" value="${S.meas.waist}"></div>
+      <div style="flex:1"><div class="muted sm">Neck (cm)</div><input id="mn" class="in" value="${S.meas.neck}"></div>
+    </div>
+    <div class="row" style="gap:8px;margin-top:8px">
+      <div style="flex:1"><div class="muted sm">Hip (cm, women)</div><input id="mh" class="in" value="${S.meas.hips||''}"></div>
+      <div style="flex:1"><div class="muted sm">Height (cm)</div><input id="mht" class="in" value="${S.meas.height}"></div>
+    </div>
+    <div id="bfOut" style="text-align:center;font-size:28px;font-weight:800;margin:14px 0;min-height:30px"></div>
+    <button class="btn" onclick="doBF()">Calculate</button>`);
+};
+window.doBF=()=>{
+  const w=+$('#mw').value,n=+$('#mn').value,h=+$('#mht').value,hip=+($('#mh').value||0);
+  S.meas={...S.meas,waist:w,neck:n,height:h,hips:hip};save();
+  let bf;
+  if(S.meas.sex==='female'){if(w+hip-n<=0)return toast('Check measurements');bf=495/(1.29579-0.35004*Math.log10(w+hip-n)+0.221*Math.log10(h))-450;}
+  else{if(w-n<=0)return toast('Waist must exceed neck');bf=495/(1.0324-0.19077*Math.log10(w-n)+0.15456*Math.log10(h))-450;}
+  if(bf<=0||bf>75||isNaN(bf))return toast('Out of range');
+  bf=Math.round(bf*10)/10;
+  $('#bfOut').innerHTML=`<span style="color:#F6735A">${bf}%</span>`;
+  S.metrics.bodyfat=S.metrics.bodyfat||[];S.metrics.bodyfat.push([today(),bf]);save();
+  setTimeout(()=>{closeSheet();renderProgress();toast('Logged '+bf+'% body fat');},800);
+};
+
+function renderVault(){
+  const caps=S.capsules.map(c=>`<div class="card"><div class="row" style="justify-content:space-between">
+    <div style="font-weight:700">${c.title}</div><div class="muted sm">${c.day}</div></div>
+    <div class="sm muted" style="margin:6px 0">${c.kcal} kcal avg · ${c.protein}g protein avg</div>
+    <div>${c.tags.map(t=>`<span class="chip" style="cursor:default">${t}</span>`).join('')}</div></div>`).join('')
+    ||'<div class="muted" style="padding:20px 2px;text-align:center">Your Vault is empty.<br>Finish a weekly review to save a capsule.</div>';
+  $('#view-vault').innerHTML=`<div class="row" style="justify-content:space-between;margin:4px 2px 12px">
+    <h3 style="margin:0">Progress Vault</h3><i class="ti ti-lock-open muted"></i></div>${caps}
+    <button class="btn" style="margin-top:6px" onclick="saveCapsule()"><i class="ti ti-plus"></i> Save this week to Vault</button>`;
+}
+window.saveCapsule=()=>{const t=totals();
+  S.capsules.unshift({day:today(),title:'Weekly capsule',tags:['cutting'],kcal:Math.round(t.kcal),protein:Math.round(t.p)});
+  save();renderVault();toast('Saved to Vault');};
+
+function renderMore(){
+  $('#view-more').innerHTML=`
+    <div class="card"><div class="row" style="gap:12px"><i class="ti ti-user" style="font-size:22px"></i>
+      <div><div>You</div><div class="muted sm">Recomp · 2200 kcal · 176g protein</div></div></div></div>
+    <div class="card" onclick="toast('Food photo AI is opt-in — needs a vision proxy')" style="cursor:pointer">
+      <div class="row" style="justify-content:space-between"><span><i class="ti ti-camera"></i> Food photo AI</span>
+      <span class="muted sm">Off</span></div></div>
+    <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv2');S=load();renderAll();toast('Reset');}" style="cursor:pointer">
+      <div class="row" style="justify-content:space-between"><span><i class="ti ti-refresh"></i> Reset demo data</span></div></div>
+    <div class="muted sm" style="text-align:center;margin-top:16px">Web preview of MacroVault.<br>The native iOS app adds barcode scan, camera AI, biometric Vault lock & encrypted storage.</div>`;
+}
+
+function renderAll(){renderToday();renderProgress();renderVault();renderMore();}
+document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
+  const tab=b.dataset.tab;
+  document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));
+  ['today','progress','vault','more'].forEach(v=>$('#view-'+v).style.display=v===tab?'block':'none');
+  $('#hTitle').textContent={today:'Today',progress:'Progress',vault:'Vault',more:'More'}[tab];
+  $('#hSub').textContent=tab==='today'?new Date().toDateString().slice(0,10):'';
+});
+$('#hSub').textContent=new Date().toDateString().replace(/( \d{4})$/,'');
+renderAll();
+</script>
+</body>
+</html>

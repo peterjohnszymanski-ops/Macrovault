@@ -1,0 +1,13 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    prefer_single_quotes: true
+    avoid_print: true
+
+analyzer:
+  errors:
+    # Keep these as warnings, not errors, so a first build isn't blocked by lints.
+    use_build_context_synchronously: warning
+  exclude:
+    - "**/*.g.dart"
