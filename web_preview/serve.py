@@ -15,9 +15,16 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5173
 
 os.chdir(DIRECTORY)
 
-Handler = functools.partial(
-    http.server.SimpleHTTPRequestHandler, directory=DIRECTORY
-)
+class _NoCache(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+Handler = functools.partial(_NoCache, directory=DIRECTORY)
 
 
 class Server(socketserver.TCPServer):

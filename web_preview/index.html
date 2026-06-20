@@ -217,8 +217,8 @@ function renderToday(){
         ${barRow('Fat',t.f,GOAL.f,'#A78BFA')}
       </div></div></div>
     <div class="qa">
-      <button onclick="toast('Scan is native-only in the real app')"><i class="ti ti-barcode"></i>Scan</button>
-      <button onclick="toast('Snap is native-only in the real app')"><i class="ti ti-camera"></i>Snap</button>
+      <button onclick="scanBarcode()"><i class="ti ti-barcode"></i>Scan</button>
+      <button onclick="snapFood()"><i class="ti ti-camera"></i>Snap</button>
       <button onclick="usuals()"><i class="ti ti-replace"></i>Usuals</button>
       <button class="primary" onclick="addFood('snack')"><i class="ti ti-plus"></i>Add</button>
     </div>
@@ -377,6 +377,123 @@ window.doBF=()=>{
   setTimeout(()=>{closeSheet();renderProgress();toast('Logged '+bf+'% body fat');},800);
 };
 
+// ---- Barcode scanner (live camera) ----
+window.scanBarcode=async()=>{
+  if(!('BarcodeDetector' in window)){
+    const c=prompt('Live scanning needs Chrome or Edge. Enter a barcode number to look up:');
+    if(c)lookupBarcode(c.trim());
+    return;
+  }
+  let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});}
+  catch(e){toast('Camera blocked — allow access');return;}
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px';
+  const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=true;v.srcObject=stream;
+  v.style.cssText='max-width:94%;max-height:74%;border-radius:16px';
+  const cap=document.createElement('div');cap.textContent='Point at a product barcode';cap.style.cssText='color:#fff;font-size:15px';
+  const x=document.createElement('button');x.textContent='Cancel';x.className='ghost';x.style.cssText='max-width:200px;color:#fff';
+  wrap.append(v,cap,x);document.body.append(wrap);
+  const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
+  let done=false;
+  const stop=()=>{done=true;stream.getTracks().forEach(t=>t.stop());wrap.remove();};
+  x.onclick=stop;
+  const loop=async()=>{
+    if(done)return;
+    try{const codes=await det.detect(v);if(codes&&codes.length){const code=codes[0].rawValue;stop();lookupBarcode(code);return;}}catch(e){}
+    requestAnimationFrame(loop);
+  };
+  v.onloadedmetadata=loop;
+};
+async function lookupBarcode(code){
+  toast('Looking up '+code+'…');
+  try{
+    const r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields=product_name,brands,nutriments,serving_quantity');
+    const j=await r.json();
+    if(j.status!==1||!j.product){toast('Not in the database — try search');return;}
+    const p=j.product,n=p.nutriments||{};
+    const sq=p.serving_quantity?parseFloat(p.serving_quantity):null;const fac=sq&&sq>0?sq/100:1;
+    confirmFood({name:p.product_name||'Product',brand:(p.brands||'').split(',')[0].trim(),off:true,
+      serv:sq?`1 serving (${Math.round(sq)} g)`:'100 g',
+      kcal:Math.round((n['energy-kcal_100g']||0)*fac),
+      p:+(((n.proteins_100g||0))*fac).toFixed(1),c:+(((n.carbohydrates_100g||0))*fac).toFixed(1),f:+(((n.fat_100g||0))*fac).toFixed(1)});
+  }catch(e){toast('Lookup failed — check connection');}
+}
+function confirmFood(food){DISPLAY=[food];window._cf=food;renderConfirm();}
+function renderConfirm(){
+  const f=window._cf;
+  openSheet(`<h3>${dispName(f)}</h3>
+    <div class="muted sm">${f.kcal} kcal · ${f.serv} · P${f.p} C${f.c} F${f.f}</div>
+    <div style="margin:14px 0">${SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderConfirm()">${n}</button>`).join('')}</div>
+    <button class="btn" onclick="logIdx(0)">Log to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);
+}
+
+// ---- Snap food → Claude vision (real call with your own API key) ----
+const FOOD_SCHEMA={type:'object',additionalProperties:false,required:['items'],properties:{items:{type:'array',items:{
+  type:'object',additionalProperties:false,required:['name','kcal','protein_g','carb_g','fat_g','confidence'],
+  properties:{name:{type:'string'},kcal:{type:'number'},protein_g:{type:'number'},carb_g:{type:'number'},fat_g:{type:'number'},confidence:{type:'number'}}}}}};
+window.snapFood=async()=>{
+  const key=localStorage.getItem('anthropicKey');
+  if(!key){openKeySetup();return;}
+  const file=await pickImage();
+  if(!file)return;
+  if(!/jpeg|png|gif|webp/.test(file.type||'')){toast('Use a JPEG or PNG photo');return;}
+  const b64=await fileToB64(file);
+  showLoading('Claude is reading your plate…');
+  try{
+    const items=await analyzeFood(b64,file.type,key);
+    hideLoading();
+    if(!items.length){toast('No foods detected — try a clearer photo');return;}
+    aiConfirm(items);
+  }catch(e){hideLoading();toast('AI error: '+e.message);}
+};
+function pickImage(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.onchange=()=>res(i.files[0]||null);i.click();});}
+function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
+async function analyzeFood(b64,mime,key){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-opus-4-8',max_tokens:1024,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+        {type:'text',text:'Identify each distinct food in this meal photo and estimate the calories and macros for the portion actually shown. Give a 0-1 confidence per item. Return only the structured data.'}]}],
+      output_config:{format:{type:'json_schema',schema:FOOD_SCHEMA}}})});
+  if(!r.ok){const t=await r.text();throw new Error('HTTP '+r.status+' '+t.slice(0,100));}
+  const j=await r.json();
+  if(j.stop_reason==='refusal')throw new Error('request declined');
+  const txt=(j.content||[]).find(b=>b.type==='text');
+  if(!txt)throw new Error('empty response');
+  const data=JSON.parse(txt.text);
+  return (data.items||[]).map(i=>({name:i.name||'Food',kcal:Math.round(i.kcal||0),
+    p:Math.round(i.protein_g||0),c:Math.round(i.carb_g||0),f:Math.round(i.fat_g||0),conf:i.confidence??0.6,sel:true}));
+}
+function aiConfirm(items){window._ai=items;renderAi();}
+function renderAi(){
+  const items=window._ai;
+  openSheet(`<h3>Detected in your photo</h3>
+    <div class="muted sm" style="margin-bottom:8px">AI estimates — uncheck anything wrong, then log.</div>
+    ${items.map((it,i)=>`<label class="fitem" style="cursor:pointer">
+      <div><div><input type="checkbox" ${it.sel?'checked':''} onchange="_ai[${i}].sel=this.checked" style="margin-right:6px">${it.name}
+      <span class="sm" style="color:${it.conf>=0.75?'#BEF264':it.conf>=0.5?'#F6B73C':'#F6735A'}">${Math.round(it.conf*100)}%</span></div>
+      <div class="muted sm">${it.kcal} kcal · P${it.p} C${it.c} F${it.f}</div></div></label>`).join('')}
+    <div style="margin:12px 0">${SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderAi()">${n}</button>`).join('')}</div>
+    <button class="btn" onclick="logAi()">Log selected to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);
+}
+window.logAi=()=>{
+  window._ai.filter(x=>x.sel).forEach(it=>S.meals[activeSlot].push({name:it.name,brand:'',kcal:it.kcal,p:it.p,c:it.c,f:it.f,qty:1}));
+  save();renderToday();closeSheet();toast('Logged from photo');
+};
+window.openKeySetup=()=>{
+  const k=localStorage.getItem('anthropicKey')||'';
+  openSheet(`<h3>Food photo AI</h3>
+    <div class="muted sm" style="margin-bottom:10px">Snap a meal and Claude estimates calories + macros. In this local preview your Anthropic API key is stored only in this browser and the photo goes straight to Anthropic. (The iOS app routes this through a server, so no key lives on the device.)</div>
+    <input id="ak" class="in" placeholder="sk-ant-..." value="${k}">
+    <button class="btn" style="margin-top:12px" onclick="saveKey()">Save key</button>
+    ${k?`<button class="ghost" style="margin-top:8px" onclick="localStorage.removeItem('anthropicKey');closeSheet();renderMore();toast('Key removed')">Remove key</button>`:''}`);
+};
+window.saveKey=()=>{const v=document.getElementById('ak').value.trim();if(v){localStorage.setItem('anthropicKey',v);toast('Saved — tap Snap');}closeSheet();renderMore();};
+function showLoading(m){let d=document.getElementById('load');if(!d){d=document.createElement('div');d.id='load';d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;text-align:center;padding:20px';document.body.append(d);}d.textContent=m||'Analyzing…';}
+function hideLoading(){const d=document.getElementById('load');if(d)d.remove();}
+
 function renderVault(){
   const caps=S.capsules.map(c=>`<div class="card"><div class="row" style="justify-content:space-between">
     <div style="font-weight:700">${c.title}</div><div class="muted sm">${c.day}</div></div>
@@ -395,9 +512,9 @@ function renderMore(){
   $('#view-more').innerHTML=`
     <div class="card"><div class="row" style="gap:12px"><i class="ti ti-user" style="font-size:22px"></i>
       <div><div>You</div><div class="muted sm">Recomp · 2200 kcal · 176g protein</div></div></div></div>
-    <div class="card" onclick="toast('Food photo AI is opt-in — needs a vision proxy')" style="cursor:pointer">
+    <div class="card" onclick="openKeySetup()" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-camera"></i> Food photo AI</span>
-      <span class="muted sm">Off</span></div></div>
+      <span class="muted sm">${localStorage.getItem('anthropicKey')?'On':'Set up'}</span></div></div>
     <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv2');S=load();renderAll();toast('Reset');}" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-refresh"></i> Reset demo data</span></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px">Web preview of MacroVault.<br>The native iOS app adds barcode scan, camera AI, biometric Vault lock & encrypted storage.</div>`;
