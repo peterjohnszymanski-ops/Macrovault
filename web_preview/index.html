@@ -184,17 +184,18 @@ async function offSearch(q){
 
 let S=load();
 function load(){
-  const raw=localStorage.getItem('mv4');
+  const raw=localStorage.getItem('mv5');
   if(raw) return JSON.parse(raw);
   const seed={
     meals:{breakfast:[],lunch:[],dinner:[],snack:[]},
     usage:{}, water:0,
-    weight:[['2024-12-01',86.2],['2025-01-01',84.6],['2025-02-01',83.1],['2025-03-01',82.0],['2025-04-01',81.2],['2025-05-01',80.6]],
-    metrics:{bench:[['2024-12-01',80],['2025-02-01',88],['2025-04-01',96],['2025-05-01',102]],
-             bodyfat:[['2024-12-01',21.5],['2025-02-01',19.2],['2025-04-01',17.1],['2025-05-01',16.0]],
-             squat:[],deadlift:[]},
+    weight:[[dayKey(-168),86.2],[dayKey(-140),84.6],[dayKey(-112),83.1],[dayKey(-84),82.0],[dayKey(-56),81.2],[dayKey(-28),80.9],[dayKey(-3),80.6]],
+    metrics:{bench:[[dayKey(-168),80],[dayKey(-126),86],[dayKey(-84),92],[dayKey(-42),97],[dayKey(-7),102]],
+             bodyfat:[[dayKey(-168),21.5],[dayKey(-112),19.6],[dayKey(-70),18.0],[dayKey(-28),16.7],[dayKey(-3),16.0]],
+             squat:[[dayKey(-140),120],[dayKey(-70),140],[dayKey(-7),155]],deadlift:[[dayKey(-140),150],[dayKey(-70),175],[dayKey(-7),190]]},
+    customMetrics:[],
     meas:{waist:84,neck:38,hips:0,height:180,sex:'male'},
-    capsules:[{day:'2025-05-04',title:'Best week',tags:['best week','high protein'],kcal:2180,protein:172}],
+    capsules:[{day:dayKey(-14),title:'Best week',tags:['best week','high protein'],kcal:2180,protein:172,streak:7}],
     history:{}
   };
   log1(seed,'breakfast','Greek yogurt');log1(seed,'breakfast','Oats');log1(seed,'lunch','Chicken breast');
@@ -203,11 +204,11 @@ function load(){
   // Seed the last 6 days so the streak + weekly chart look alive.
   const past=[2090,2240,1980,2160,2310,2050];
   for(let i=6;i>=1;i--){seed.history[dayKey(-i)]={kcal:past[6-i],p:150+((i*7)%30),logged:true};}
-  localStorage.setItem('mv4',JSON.stringify(seed));
+  localStorage.setItem('mv5',JSON.stringify(seed));
   return seed;
 }
 function syncHistory(){const t=totals();S.history=S.history||{};S.history[today()]={kcal:Math.round(t.kcal),p:Math.round(t.p),logged:t.kcal>0};}
-function save(){syncHistory();localStorage.setItem('mv4',JSON.stringify(S));}
+function save(){syncHistory();localStorage.setItem('mv5',JSON.stringify(S));}
 function log1(state,slot,name){const f=G(DB.find(d=>d[0]===name));
   state.meals[slot].push({name:f.name,brand:f.brand,kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});
   const k=fkey(f);state.usage[k]=state.usage[k]||{f,count:0,last:0,fav:false};
@@ -374,13 +375,25 @@ function renderToday(){
 
 window.openMeal=k=>{
   const name=SLOTS.find(s=>s[0]===k)[1];
-  let items=S.meals[k].map((x,i)=>`<div class="fitem"><div><div>${x.name}${x.brand?' · '+x.brand:''}</div>
-    <div class="muted sm">${x.qty} serving · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}</div></div>
-    <i class="ti ti-x muted" onclick="delItem('${k}',${i})"></i></div>`).join('')||'<div class="muted" style="padding:14px 2px">Nothing logged yet.</div>';
-  openSheet(`<h3>${name} · ${fmt(mealKcal(k))} kcal</h3>${items}
+  let items=S.meals[k].map((x,i)=>`<div class="fitem" onclick="editItemQty('${k}',${i})"><div><div>${x.name}${x.brand?' · '+x.brand:''}</div>
+    <div class="muted sm">${x.qty%1===0?x.qty:x.qty.toFixed(1)} serving · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}</div></div>
+    <i class="ti ti-x muted" onclick="event.stopPropagation();delItem('${k}',${i})"></i></div>`).join('')||'<div class="muted" style="padding:14px 2px">Nothing logged yet.</div>';
+  openSheet(`<h3>${name} · ${fmt(mealKcal(k))} kcal</h3>
+    <div class="muted sm" style="margin-bottom:6px">Tap an item to adjust the portion.</div>${items}
     <button class="btn" style="margin-top:14px" onclick="addFood('${k}')"><i class="ti ti-plus"></i> Add food</button>`);
 };
 window.delItem=(k,i)=>{S.meals[k].splice(i,1);save();renderToday();openMeal(k);toast('Removed');};
+window.editItemQty=(k,i)=>{window._eq={k,i};renderEditQty();};
+function renderEditQty(){const {k,i}=window._eq;const it=S.meals[k][i];if(!it)return;
+  openSheet(`<h3>${it.name}${it.brand?' · '+it.brand:''}</h3>
+    <div class="row" style="justify-content:center;gap:20px;margin:18px 0">
+      <i class="ti ti-circle-minus" style="font-size:36px;color:#BEF264" onclick="eqQty(-0.5)"></i>
+      <div style="text-align:center;min-width:90px"><div style="font-size:32px;font-weight:800">${it.qty%1===0?it.qty:it.qty.toFixed(1)}</div>
+        <div class="muted sm">servings · ${fmt(it.kcal*it.qty)} kcal</div></div>
+      <i class="ti ti-circle-plus" style="font-size:36px;color:#BEF264" onclick="eqQty(0.5)"></i></div>
+    <button class="btn" onclick="closeSheet();renderToday();toast('Updated')">Done</button>
+    <button class="ghost" style="margin-top:8px" onclick="delItem('${k}',${i});closeSheet()">Remove from ${SLOTS.find(s=>s[0]===k)[1]}</button>`);}
+window.eqQty=d=>{const {k,i}=window._eq;const it=S.meals[k][i];it.qty=Math.max(0.5,Math.round((it.qty+d)*2)/2);save();renderEditQty();};
 
 let activeSlot='snack';
 let DISPLAY=[];        // foods currently shown in the sheet, indexed for logging
@@ -394,10 +407,32 @@ function rowHtml(f){
   const i=DISPLAY.push(f)-1;
   const fav=(S.usage[fkey(f)]||{}).fav;
   return `<div class="fitem" onclick="logIdx(${i})">
-    <div><div>${fav?'<i class="ti ti-star star"></i> ':''}${dispName(f)}</div>
+    <div style="flex:1;min-width:0"><div>${fav?'<i class="ti ti-star star"></i> ':''}${dispName(f)}</div>
     <div class="muted sm">${f.kcal} kcal · ${f.serv}${f.off?' · <span style="color:#5C6670">database</span>':''}</div></div>
-    <i class="ti ti-plus" style="color:#BEF264"></i></div>`;
+    <div class="row" style="gap:16px;padding-left:8px">
+      <i class="ti ti-adjustments-horizontal muted" title="Set portion" onclick="event.stopPropagation();portion(${i})"></i>
+      <i class="ti ti-plus" style="color:#BEF264"></i></div></div>`;
 }
+window.portion=i=>{const f=DISPLAY[i];if(!f)return;window._port={f,qty:f.lastQty||1};renderPortion();};
+function renderPortion(){const {f,qty}=window._port;const kc=Math.round(f.kcal*qty);
+  const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderPortion()">${n}</button>`).join('');
+  openSheet(`<h3>${dispName(f)}</h3><div class="muted sm">${f.kcal} kcal · ${f.serv}</div>
+    <div class="row" style="justify-content:center;gap:22px;margin:20px 0 14px">
+      <i class="ti ti-circle-minus" style="font-size:38px;color:#BEF264" onclick="portQty(-0.5)"></i>
+      <div style="text-align:center;min-width:80px"><div style="font-size:34px;font-weight:800">${qty%1===0?qty:qty.toFixed(1)}</div><div class="muted sm">servings</div></div>
+      <i class="ti ti-circle-plus" style="font-size:38px;color:#BEF264" onclick="portQty(0.5)"></i></div>
+    <div class="row" style="justify-content:space-around;text-align:center;margin-bottom:16px">
+      <div><div style="font-size:18px;font-weight:800">${kc}</div><div class="muted sm">kcal</div></div>
+      <div><div style="font-size:18px;font-weight:800;color:#2DD4BF">${Math.round(f.p*qty)}g</div><div class="muted sm">protein</div></div>
+      <div><div style="font-size:18px;font-weight:800;color:#F6B73C">${Math.round(f.c*qty)}g</div><div class="muted sm">carbs</div></div>
+      <div><div style="font-size:18px;font-weight:800;color:#A78BFA">${Math.round(f.f*qty)}g</div><div class="muted sm">fat</div></div></div>
+    <div style="margin-bottom:12px">${chips}</div>
+    <button class="btn" onclick="portAdd()">Add to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);}
+window.portQty=d=>{window._port.qty=Math.max(0.5,Math.round((window._port.qty+d)*2)/2);renderPortion();};
+window.portAdd=()=>{const {f,qty}=window._port;
+  S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty,m:f.m||{}});
+  const k=fkey(f);S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};S.usage[k].f=f;S.usage[k].count++;S.usage[k].last=Date.now();
+  save();renderToday();closeSheet();toast('Logged '+(qty%1===0?qty:qty.toFixed(1))+'× '+f.name);};
 
 function renderAddSheet(q){
   DISPLAY=[];
@@ -450,41 +485,89 @@ window.logWeight=()=>{const v=parseFloat(prompt('Log weight (kg):',S.weight.leng
 
 function norm(arr){const v=arr.map(x=>x[1]);const mn=Math.min(...v),mx=Math.max(...v);const r=(mx-mn)||1;
   return arr.map(x=>[x[0],(x[1]-mn)/r]);}
+let _pRange=180,_pHidden={};
+window.setPRange=d=>{_pRange=d;renderProgress();};
+window.togSeries=k=>{_pHidden[k]=!_pHidden[k];renderProgress();};
+function allDefs(){return [...METRICS,...(S.customMetrics||[])];}
+function colorFor(key){const m=METRICS.find(x=>x.key===key);if(m)return m.color;
+  const h=(key.split('').reduce((a,b)=>a+b.charCodeAt(0),0)*47)%360;return `hsl(${h},55%,62%)`;}
+function pRangeCut(){if(_pRange>=9999)return '0000-00-00';const d=new Date();d.setDate(d.getDate()-_pRange);return d.toISOString().slice(0,10);}
+function filterPts(pts){const c=pRangeCut();const f=pts.filter(p=>p[0]>=c);return f.length?f:pts.slice(-1);}
+function spark(pts,color){if(pts.length<2)return '';const v=pts.map(p=>p[1]),mn=Math.min(...v),mx=Math.max(...v),r=(mx-mn)||1,W=64,H=22;
+  const P=pts.map((p,i)=>`${i/(pts.length-1)*W},${H-2-((p[1]-mn)/r)*(H-4)}`).join(' ');
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="${color}" stroke-width="2" points="${P}"/></svg>`;}
+
 function renderProgress(){
+  const defs=[{key:'weight',name:'Weight',unit:'kg',hi:false,dash:true},...allDefs()];
   const series=[];
-  if(S.weight.length)series.push({name:'Weight (trend)',unit:'kg',hi:false,color:'#2DD4BF',dash:true,pts:S.weight});
-  METRICS.forEach(m=>{if(S.metrics[m.key]&&S.metrics[m.key].length)series.push({...m,pts:S.metrics[m.key]});});
-  const days=[...new Set(series.flatMap(s=>s.pts.map(p=>p[0])))].sort();
+  defs.forEach(d=>{const raw=d.key==='weight'?S.weight:(S.metrics[d.key]||[]);if(!raw||!raw.length)return;
+    series.push({...d,color:d.key==='weight'?'#2DD4BF':colorFor(d.key),pts:filterPts(raw)});});
+  const vis=series.filter(s=>!_pHidden[s.key]);
+  const days=[...new Set(vis.flatMap(s=>s.pts.map(p=>p[0])))].sort();
   const xi=Object.fromEntries(days.map((d,i)=>[d,i]));
-  const W=300,H=150;
-  let lines='';
-  series.forEach(s=>{const ns=norm(s.pts);
-    const pts=ns.map(p=>`${(days.length<2?0:xi[p[0]]/(days.length-1))*W},${H-10-p[1]*(H-30)}`).join(' ');
-    lines+=`<polyline fill="none" stroke="${s.color}" stroke-width="2.5" ${s.dash?'stroke-dasharray="5 4"':''} points="${pts}"/>`;});
-  const grid=[40,80,120].map(y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#1C2530"/>`).join('');
-  const legend=series.map(s=>`<span><i style="background:${s.color}"></i>${s.name} ${ (s.pts[s.pts.length-1][1]-s.pts[0][1]>0)===s.hi?'↑':'↓'}</span>`).join('');
-  let cards=series.filter(s=>s.unit!=='kg'||s.name!=='Weight (trend)').map(s=>{
-    const last=s.pts[s.pts.length-1][1],first=s.pts[0][1],delta=last-first;
-    const good=(delta>0)===s.hi;
-    return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-      <div style="width:8px;height:36px;border-radius:4px;background:${s.color}"></div>
-      <div style="flex:1"><div>${s.name}</div><div class="sm" style="color:${good?'#BEF264':'#8A949C'}">
-        ${last.toFixed(1)} ${s.unit} · ${delta>=0?'+':''}${delta.toFixed(1)} since start</div></div>
-      ${s.key&&s.key!=='weight'?`<i class="ti ti-circle-plus" style="font-size:24px;color:#BEF264" onclick="logMetric('${s.key}')"></i>`:''}</div>`;}).join('');
+  const W=300,H=160;
+  let chart='';
+  vis.forEach(s=>{const ns=norm(s.pts);
+    const xy=ns.map(p=>[(days.length<2?0.5:xi[p[0]]/(days.length-1))*W, H-14-p[1]*(H-38)]);
+    chart+=`<polyline fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" ${s.dash?'stroke-dasharray="5 4"':''} points="${xy.map(a=>a.join(',')).join(' ')}"/>`;
+    const last=xy[xy.length-1],lv=s.pts[s.pts.length-1][1];
+    chart+=`<circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="${s.color}"/><text x="${Math.min(last[0]+5,W-22)}" y="${Math.max(11,last[1]-6)}" fill="${s.color}" font-size="10" font-weight="700">${lv}</text>`;});
+  if(!vis.length)chart=`<text x="150" y="84" fill="#5C6670" font-size="12" text-anchor="middle">Tap a legend item to show it</text>`;
+  const grid=[45,85,125].map(y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#1C2530"/>`).join('');
+  const rangeBtns=[[30,'1M'],[90,'3M'],[180,'6M'],[9999,'All']].map(([d,l])=>`<button class="chip ${_pRange===d?'on':''}" onclick="setPRange(${d})">${l}</button>`).join('');
+  const legend=series.map(s=>{const hid=_pHidden[s.key];
+    return `<span onclick="togSeries('${s.key}')" style="cursor:pointer;opacity:${hid?0.4:1};text-decoration:${hid?'line-through':'none'}"><i style="background:${s.color}"></i>${s.name}</span>`;}).join('');
+  const tr=series.filter(s=>s.pts.length>1);const trend=tr.filter(s=>{const d=s.pts[s.pts.length-1][1]-s.pts[0][1];return (d>0)===s.hi;}).length;
+
+  const cards=defs.map(d=>{const raw=d.key==='weight'?S.weight:(S.metrics[d.key]||[]);if(!raw||!raw.length)return '';
+    const last=raw[raw.length-1][1],first=raw[0][1],delta=last-first,good=(delta>0)===d.hi;
+    const isPR=d.hi&&raw.length>1&&last>=Math.max(...raw.map(x=>x[1]));
+    const col=d.key==='weight'?'#2DD4BF':colorFor(d.key);
+    return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer" onclick="metricDetail('${d.key}')">
+      <div style="width:6px;height:42px;border-radius:4px;background:${col}"></div>
+      <div style="flex:1"><div style="display:flex;align-items:center;gap:6px">${d.name}${isPR?'<span style="background:#BEF264;color:#0E1217;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px">PR</span>':''}</div>
+        <div class="sm" style="color:${good?'#BEF264':'#8A949C'}">${last}${d.unit?' '+d.unit:''} · ${delta>=0?'+':''}${(+delta.toFixed(1))} since start</div></div>
+      ${spark(raw,col)}<i class="ti ti-chevron-right muted"></i></div>`;}).join('');
+
   $('#view-progress').innerHTML=`
-    <div class="card"><h3 style="margin-top:0">Everything on one timeline</h3>
-      <svg width="100%" height="150" viewBox="0 0 300 150" role="img" aria-label="overlaid progress">${grid}${lines}</svg>
-      <div class="legend">${legend}</div></div>
+    <div class="card fade">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="margin:0">Progress</h3>
+        ${tr.length?`<span class="muted sm">${trend}/${tr.length} trending right</span>`:''}</div>
+      <div style="margin-bottom:8px">${rangeBtns}</div>
+      <svg width="100%" height="160" viewBox="0 0 300 160" role="img" aria-label="overlaid progress">${grid}${chart}</svg>
+      <div class="legend" style="margin-top:10px">${legend}</div></div>
     <h3>Metrics</h3>${cards}
     <div class="row" style="gap:10px">
-      <button class="ghost" onclick="logMetric('bench')"><i class="ti ti-plus"></i> Log a lift</button>
-      <button class="ghost" onclick="estimateBF()"><i class="ti ti-ruler"></i> Estimate body fat</button>
-    </div>`;
+      <button class="ghost" onclick="pickLift()"><i class="ti ti-barbell"></i> Log a lift</button>
+      <button class="ghost" onclick="estimateBF()"><i class="ti ti-ruler"></i> Body fat</button></div>
+    <button class="ghost" style="margin-top:10px" onclick="addCustomMetric()"><i class="ti ti-plus"></i> Add a custom metric</button>`;
 }
-window.logMetric=key=>{const m=METRICS.find(x=>x.key===key);
+window.pickLift=()=>{openSheet(`<h3>Log a lift</h3>${['bench','squat','deadlift'].map(k=>{const m=METRICS.find(x=>x.key===k);
+  return `<div class="fitem" onclick="closeSheet();logMetric('${k}')"><div>${m.name}</div><i class="ti ti-plus" style="color:#BEF264"></i></div>`;}).join('')}`);};
+window.logMetric=key=>{closeSheet();const def=allDefs().find(x=>x.key===key)||{name:key,unit:''};
   if(key==='bodyfat')return estimateBF();
-  const v=parseFloat(prompt('Log '+m.name+' ('+m.unit+'):',''));if(!v)return;
-  S.metrics[key]=S.metrics[key]||[];S.metrics[key].push([today(),v]);save();renderProgress();toast(m.name+' logged');};
+  const v=parseFloat(prompt('Log '+def.name+(def.unit?' ('+def.unit+')':'')+':',''));if(isNaN(v))return;
+  S.metrics[key]=S.metrics[key]||[];S.metrics[key].push([today(),v]);save();renderProgress();toast(def.name+' logged');};
+window.metricDetail=key=>{
+  const def=key==='weight'?{key:'weight',name:'Weight',unit:'kg',hi:false}:allDefs().find(d=>d.key===key);
+  const raw=key==='weight'?S.weight:(S.metrics[key]||[]);const col=key==='weight'?'#2DD4BF':colorFor(key);
+  const last=raw.length?raw[raw.length-1][1]:0,mx=raw.length?Math.max(...raw.map(x=>x[1])):0;
+  const v=raw.map(p=>p[1]),mn=Math.min(...v),mxx=Math.max(...v),r=(mxx-mn)||1,W=300,H=120;
+  const P=raw.map((p,i)=>`${(raw.length<2?0.5:i/(raw.length-1))*W},${H-8-((p[1]-mn)/r)*(H-20)}`).join(' ');
+  const hist=raw.slice().reverse().map((p,ri)=>{const idx=raw.length-1-ri;
+    return `<div class="fitem"><div><div>${p[1]}${def.unit?' '+def.unit:''}</div><div class="muted sm">${p[0]}</div></div><i class="ti ti-x muted" onclick="delMetricPt('${key}',${idx})"></i></div>`;}).join('')||'<div class="muted sm" style="padding:10px 2px">No entries yet.</div>';
+  openSheet(`<h3>${def.name} ${def.hi&&raw.length>1&&last>=mx?'<span style="background:#BEF264;color:#0E1217;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px">PR</span>':''}</h3>
+    <div style="font-size:30px;font-weight:800;color:${col}">${last}${def.unit?'<span style="font-size:14px;color:#8A949C"> '+def.unit+'</span>':''}</div>
+    <svg width="100%" height="120" viewBox="0 0 300 120" style="margin:8px 0"><polyline fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" points="${P}"/></svg>
+    <button class="btn" style="margin-bottom:14px" onclick="${key==='bodyfat'?'estimateBF()':"logMetric('"+key+"')"}"><i class="ti ti-plus"></i> Add entry</button>
+    <div class="muted sm" style="margin-bottom:4px">History</div>${hist}`);};
+window.delMetricPt=(key,idx)=>{const arr=key==='weight'?S.weight:S.metrics[key];arr.splice(idx,1);save();renderProgress();metricDetail(key);toast('Removed');};
+window.addCustomMetric=()=>{const name=prompt('Metric name (e.g. Pull-up max, Resting HR, Sleep):','');if(!name)return;
+  const unit=prompt('Unit (kg, reps, bpm, hrs, %) — optional:','')||'';
+  const hi=confirm('Is higher better for "'+name+'"?\n\nOK = higher is better   ·   Cancel = lower is better');
+  const key='c_'+name.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,18);
+  S.customMetrics=S.customMetrics||[];if(!S.customMetrics.find(m=>m.key===key))S.customMetrics.push({key,name,unit,hi});
+  S.metrics[key]=S.metrics[key]||[];save();logMetric(key);};
 window.estimateBF=()=>{
   openSheet(`<h3>Estimate body fat — Navy method</h3>
     <div class="muted sm" style="margin-bottom:10px">Uses your measurements + height. ${S.meas.sex==='female'?'Hip required.':''}</div>
@@ -727,7 +810,7 @@ function renderMore(){
     <div class="card" onclick="openKeySetup()" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-camera"></i> Food photo AI</span>
       <span class="muted sm">${localStorage.getItem('anthropicKey')?'On':'Set up'}</span></div></div>
-    <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv4');S=load();renderAll();toast('Reset');}" style="cursor:pointer">
+    <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv5');S=load();renderAll();toast('Reset');}" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-refresh"></i> Reset demo data</span></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px">Web preview of MacroVault.<br>The native iOS app adds barcode scan, camera AI, biometric Vault lock & encrypted storage.</div>`;
 }
