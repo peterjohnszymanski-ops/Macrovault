@@ -669,20 +669,23 @@ window.snapFood=async()=>{
 function pickImage(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.onchange=()=>res(i.files[0]||null);i.click();});}
 function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
 async function analyzeFood(b64,mime,key){
+  // Structured output via tool use (the reliable Anthropic pattern) — Claude is
+  // forced to call log_foods, and we read the typed args from the tool_use block.
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:'claude-opus-4-8',max_tokens:1024,
+      tools:[{name:'log_foods',description:'Record every distinct food detected in the meal photo with estimated calories and macros for the portion actually shown.',input_schema:FOOD_SCHEMA}],
+      tool_choice:{type:'tool',name:'log_foods'},
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:mime,data:b64}},
-        {type:'text',text:'Identify each distinct food in this meal photo and estimate the calories and macros for the portion actually shown. Give a 0-1 confidence per item. Return only the structured data.'}]}],
-      output_config:{format:{type:'json_schema',schema:FOOD_SCHEMA}}})});
-  if(!r.ok){const t=await r.text();throw new Error('HTTP '+r.status+' '+t.slice(0,100));}
+        {type:'text',text:'Identify each distinct food in this meal photo and estimate calories and macros for the portion actually shown. Give a 0-1 confidence per item.'}]}]})});
+  if(!r.ok){const t=await r.text();throw new Error('HTTP '+r.status+' '+t.slice(0,120));}
   const j=await r.json();
   if(j.stop_reason==='refusal')throw new Error('request declined');
-  const txt=(j.content||[]).find(b=>b.type==='text');
-  if(!txt)throw new Error('empty response');
-  const data=JSON.parse(txt.text);
-  return (data.items||[]).map(i=>({name:i.name||'Food',kcal:Math.round(i.kcal||0),
+  const tu=(j.content||[]).find(b=>b.type==='tool_use');
+  const data=tu?tu.input:null;
+  if(!data||!Array.isArray(data.items))throw new Error('no foods returned');
+  return data.items.map(i=>({name:i.name||'Food',kcal:Math.round(i.kcal||0),
     p:Math.round(i.protein_g||0),c:Math.round(i.carb_g||0),f:Math.round(i.fat_g||0),conf:i.confidence??0.6,sel:true}));
 }
 function aiConfirm(items){window._ai=items;renderAi();}
@@ -693,12 +696,13 @@ function renderAi(){
     ${items.map((it,i)=>`<label class="fitem" style="cursor:pointer">
       <div><div><input type="checkbox" ${it.sel?'checked':''} onchange="_ai[${i}].sel=this.checked" style="margin-right:6px">${it.name}
       <span class="sm" style="color:${it.conf>=0.75?'#BEF264':it.conf>=0.5?'#F6B73C':'#F6735A'}">${Math.round(it.conf*100)}%</span></div>
-      <div class="muted sm">${it.kcal} kcal · P${it.p} C${it.c} F${it.f}</div></div></label>`).join('')}
+      <div class="muted sm" onclick="event.stopPropagation();event.preventDefault();editAiKcal(${i})" style="cursor:pointer">${it.kcal} kcal · P${it.p} C${it.c} F${it.f} · <span style="color:#BEF264">edit</span></div></div></label>`).join('')}
     <div style="margin:12px 0">${SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderAi()">${n}</button>`).join('')}</div>
     <button class="btn" onclick="logAi()">Log selected to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);
 }
+window.editAiKcal=i=>{const it=window._ai[i];const v=parseFloat(prompt('Calories for '+it.name+':',it.kcal));if(isNaN(v))return;it.kcal=Math.round(v);renderAi();};
 window.logAi=()=>{
-  window._ai.filter(x=>x.sel).forEach(it=>S.meals[activeSlot].push({name:it.name,brand:'',kcal:it.kcal,p:it.p,c:it.c,f:it.f,qty:1}));
+  window._ai.filter(x=>x.sel).forEach(it=>S.meals[activeSlot].push({name:it.name,brand:'',kcal:it.kcal,p:it.p,c:it.c,f:it.f,qty:1,m:{}}));
   save();renderToday();closeSheet();toast('Logged from photo');
 };
 window.openKeySetup=()=>{
