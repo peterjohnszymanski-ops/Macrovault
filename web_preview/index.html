@@ -183,6 +183,9 @@ async function offSearch(q){
 }
 
 let S=load();
+// Coach defaults (merged so existing saves gain the feature without losing data).
+S.coach=Object.assign({enabled:false,gymTime:'18:00',trainDays:[1,2,3,4,5],preCarb:true,preCarbG:40,
+  cardioPerWeek:3,trainedToday:'',cardioDays:[]},S.coach||{});
 function load(){
   const raw=localStorage.getItem('mv5');
   if(raw) return JSON.parse(raw);
@@ -278,6 +281,56 @@ window.openMicros=()=>{const m=microTotals();const wPct=Math.round(Math.min(100,
     ${Object.keys(MTARGET).map(k=>microRow(k,m[k])).join('')}
     <div class="muted sm" style="margin-top:4px">Amber bars are limit nutrients (stay under); teal are hit-the-target nutrients.</div>`);};
 
+// ---- Gym coach: fuel up, train, cardio ----
+function fmtTime(min){let h=Math.floor(min/60),m=min%60,ap=h>=12?'PM':'AM';h=h%12||12;return h+(m?':'+String(m).padStart(2,'0'):'')+' '+ap;}
+function coachState(){const c=S.coach,now=new Date(),day=now.getDay();
+  const [gh,gm]=(c.gymTime||'18:00').split(':').map(Number);
+  return {c,isGymDay:(c.trainDays||[]).includes(day),trained:c.trainedToday===today(),
+    cardioWk:(c.cardioDays||[]).filter(d=>d>=dayKey(-6)).length,
+    gymMin:gh*60+gm,nowMin:now.getHours()*60+now.getMinutes(),carbs:totals().c};}
+function coachPrimary(){const s=coachState();
+  if(s.isGymDay&&!s.trained){const toGym=s.gymMin-s.nowMin;
+    if(s.c.preCarb&&toGym<=90&&toGym>=10&&s.carbs<s.c.preCarbG)
+      return {i:'meat',c:'#F6B73C',title:'Carb up before training',sub:`Gym at ${fmtTime(s.gymMin)} — get ~${s.c.preCarbG}g carbs in now to fuel the lift.`,act:'carb'};
+    if(toGym<=15&&toGym>=-150)
+      return {i:'barbell',c:'#BEF264',title:'Time to train 💪',sub:'It is gym o-clock. Mark it done when you finish.',act:'train'};
+    if(toGym>15)
+      return {i:'clock',c:'#2DD4BF',title:`Training at ${fmtTime(s.gymMin)}`,sub:s.c.preCarb?`Plan ~${s.c.preCarbG}g carbs about an hour before.`:'Get ready for the session.',act:'train'};
+  }
+  if(s.trained)return {i:'circle-check',c:'#BEF264',title:'Trained today ✓',sub:'Nice work — lean on protein and recovery from here.',act:null};
+  if(!s.isGymDay)return {i:'bed',c:'#A78BFA',title:'Rest day',sub:s.cardioWk<s.c.cardioPerWeek?'Good day for some easy cardio.':'Recover well — you are on track.',act:'cardio'};
+  return {i:'barbell',c:'#BEF264',title:'Training day',sub:'Mark it when you train.',act:'train'};}
+let coachTimers=[];
+function notify(t,b){try{if('Notification'in window&&Notification.permission==='granted')new Notification(t,{body:b});}catch(e){}}
+function scheduleCoach(){coachTimers.forEach(clearTimeout);coachTimers=[];const c=S.coach;if(!c.enabled)return;
+  const now=new Date();if(!c.trainDays.includes(now.getDay()))return;
+  const [gh,gm]=c.gymTime.split(':').map(Number);const gym=new Date();gym.setHours(gh,gm,0,0);
+  const at=(d,fn)=>{const ms=d.getTime()-Date.now();if(ms>1000&&ms<864e5)coachTimers.push(setTimeout(fn,ms));};
+  if(c.preCarb)at(new Date(gym.getTime()-36e5),()=>notify('Carb up 🍚','Training in about an hour — get ~'+c.preCarbG+'g carbs in now.'));
+  at(gym,()=>{if(S.coach.trainedToday!==today())notify('Time to train 💪','Hit the gym. Mark it when you finish.');});}
+window.enableAlerts=async()=>{if(!('Notification'in window)){toast('Notifications not supported here');return;}
+  let p=Notification.permission;if(p!=='granted')p=await Notification.requestPermission();
+  if(p==='granted'){S.coach.enabled=true;save();scheduleCoach();notify('MacroVault alerts on ✓','Gym and fuel nudges are set for today.');renderToday();openCoachSettings();toast('Alerts on — keep this tab open');}
+  else toast('Allow notifications to enable');};
+window.markTrained=()=>{S.coach.trainedToday=S.coach.trainedToday===today()?'':today();save();renderToday();toast(S.coach.trainedToday?'Training logged 💪':'Unmarked');};
+window.logCardioSession=()=>{S.coach.cardioDays=S.coach.cardioDays||[];if(!S.coach.cardioDays.includes(today()))S.coach.cardioDays.push(today());save();renderToday();toast('Cardio logged 🏃');};
+window.coachCarbQuick=()=>{S.meals.snack.push({name:'Pre-gym carbs',brand:'',kcal:S.coach.preCarbG*4,p:0,c:S.coach.preCarbG,f:0,qty:1,m:{}});save();renderToday();toast('Logged '+S.coach.preCarbG+'g carbs')};
+window.openCoachSettings=()=>{const c=S.coach,days=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  openSheet(`<h3>Gym coach</h3><div class="muted sm" style="margin-bottom:12px">Nudges to fuel up, train, and get your cardio in.</div>
+    <div class="muted sm">Gym time</div>
+    <input id="cg" class="in" type="time" value="${c.gymTime}" onchange="S.coach.gymTime=this.value;save();renderToday()">
+    <div class="muted sm" style="margin-top:12px">Training days</div>
+    <div style="margin:6px 0">${days.map((d,i)=>`<button class="chip ${c.trainDays.includes(i)?'on':''}" onclick="togTrainDay(${i})">${d}</button>`).join('')}</div>
+    <label class="row" style="justify-content:space-between;margin:12px 0"><span>Pre-gym carb reminder</span>
+      <input type="checkbox" ${c.preCarb?'checked':''} onchange="S.coach.preCarb=this.checked;save();renderToday()"></label>
+    <div class="row" style="justify-content:space-between;margin-bottom:10px"><span class="muted sm">Pre-gym carbs (g)</span>
+      <input class="in" style="width:84px" type="number" value="${c.preCarbG}" onchange="S.coach.preCarbG=+this.value||40;save();renderToday()"></div>
+    <div class="row" style="justify-content:space-between;margin-bottom:16px"><span class="muted sm">Cardio / week</span>
+      <input class="in" style="width:84px" type="number" value="${c.cardioPerWeek}" onchange="S.coach.cardioPerWeek=+this.value||3;save();renderToday()"></div>
+    <button class="btn" onclick="enableAlerts()"><i class="ti ti-bell"></i> ${c.enabled?'Alerts on ✓ · re-arm for today':'Enable browser alerts'}</button>
+    <div class="muted sm" style="margin-top:8px">Browser alerts fire while this tab is open. The iOS app uses real push notifications.</div>`);};
+window.togTrainDay=i=>{const a=S.coach.trainDays,x=a.indexOf(i);x<0?a.push(i):a.splice(x,1);save();openCoachSettings();renderToday();};
+
 function renderToday(){
   syncHistory();
   const t=totals(), st=streak();
@@ -300,6 +353,17 @@ function renderToday(){
 
   const ins=insights().map(x=>`<div class="ins"><i class="ti ti-${x.i}" style="color:${x.c};font-size:18px;margin-top:1px"></i><div style="font-size:13px;line-height:1.45">${x.t}</div></div>`).join('');
   const mt=microTotals();
+  const cp=coachPrimary(),cs=coachState();
+  const coachCard=`<div class="card fade" style="border:.5px solid ${cp.c}44">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <div class="row" style="gap:8px"><i class="ti ti-${cp.i}" style="color:${cp.c};font-size:20px"></i><h3 style="margin:0">${cp.title}</h3></div>
+        <i class="ti ti-bell${S.coach.enabled?'':'-off'} muted" style="cursor:pointer" onclick="openCoachSettings()"></i></div>
+      <div class="sm" style="line-height:1.5;color:#C9D2D8">${cp.sub}</div>
+      <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="ghost" style="width:auto;padding:8px 12px;${cs.trained?'border-color:#BEF264':''}" onclick="markTrained()"><i class="ti ti-barbell"></i> ${cs.trained?'Trained ✓':'Mark trained'}</button>
+        <button class="ghost" style="width:auto;padding:8px 12px;${cs.cardioWk>=S.coach.cardioPerWeek?'border-color:#BEF264':''}" onclick="logCardioSession()"><i class="ti ti-run"></i> Cardio ${cs.cardioWk}/${S.coach.cardioPerWeek}</button>
+        ${cp.act==='carb'?`<button class="ghost" style="width:auto;padding:8px 12px;color:#F6B73C;border-color:#F6B73C" onclick="coachCarbQuick()"><i class="ti ti-bolt"></i> +${S.coach.preCarbG}g carbs</button>`:''}
+      </div></div>`;
 
   const w=S.weight.length?S.weight[S.weight.length-1][1]:null;
   const wvals=S.weight.slice(-8).map(x=>x[1]);
@@ -334,6 +398,8 @@ function renderToday(){
       <button onclick="usuals()"><i class="ti ti-replace"></i>Usuals</button>
       <button class="primary" onclick="addFood('${currentSlot()}')"><i class="ti ti-plus"></i>Add</button>
     </div>
+
+    ${coachCard}
 
     ${quick?`<div class="fade" style="margin:6px 2px 12px">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
@@ -811,6 +877,9 @@ function renderMore(){
   $('#view-more').innerHTML=`
     <div class="card"><div class="row" style="gap:12px"><i class="ti ti-user" style="font-size:22px"></i>
       <div><div>You</div><div class="muted sm">Recomp · 2200 kcal · 176g protein</div></div></div></div>
+    <div class="card" onclick="openCoachSettings()" style="cursor:pointer">
+      <div class="row" style="justify-content:space-between"><span><i class="ti ti-barbell"></i> Gym coach &amp; alerts</span>
+      <span class="muted sm">${S.coach.enabled?'Alerts on':'Gym '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1]))}</span></div></div>
     <div class="card" onclick="openKeySetup()" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-camera"></i> Food photo AI</span>
       <span class="muted sm">${localStorage.getItem('anthropicKey')?'On':'Set up'}</span></div></div>
@@ -830,6 +899,7 @@ document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
 });
 renderAll();
 animateToday();
+scheduleCoach();
 </script>
 </body>
 </html>
