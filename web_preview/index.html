@@ -84,6 +84,7 @@
   .pcell img{width:100%; height:100%; object-fit:cover; display:block;}
   .pbadge{position:absolute; top:6px; left:6px; background:rgba(0,0,0,.62); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:8px;}
   .pdate{position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,.55); color:#fff; font-size:10px; padding:1px 6px; border-radius:7px;}
+  .ppose{position:absolute; bottom:6px; left:6px; background:rgba(0,0,0,.55); color:#fff; font-size:10px; padding:1px 6px; border-radius:7px; text-transform:capitalize;}
 </style>
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/dist/tabler-icons.min.css" rel="stylesheet">
 </head>
@@ -193,6 +194,7 @@ let S=load();
 S.coach=Object.assign({enabled:false,gymTime:'18:00',trainDays:[1,2,3,4,5],preCarb:true,preCarbG:40,
   cardioPerWeek:3,trainedToday:'',cardioDays:[]},S.coach||{});
 S.photos=S.photos||[];
+S.lock=S.lock||{enabled:false,pin:''};
 function load(){
   const raw=localStorage.getItem('mv6');
   if(raw) return JSON.parse(raw);
@@ -868,22 +870,45 @@ window.renderVaultList=()=>{const caps=vaultFiltered();
     <div>${(c.tags||[]).map(t=>`<span class="chip" style="cursor:default">${t}</span>`).join('')}</div></div>`).join('')
     ||'<div class="muted" style="padding:20px 2px;text-align:center">No capsules match.</div>';};
 // ---- Vault photos + AI body-fat estimation ----
-let _photoSort='date';
+let _photoSort='date',_photoPose=null;
 window.setPhotoSort=s=>{_photoSort=s;renderPhotos();};
-function sortedPhotos(){const a=(S.photos||[]).slice();
+window.setPhotoPose=p=>{_photoPose=p;renderPhotos();};
+function sortedPhotos(){let a=(S.photos||[]).slice();
+  if(_photoPose)a=a.filter(p=>p.pose===_photoPose);
   if(_photoSort==='bfasc')a.sort((x,y)=>(x.bf??999)-(y.bf??999));
   else if(_photoSort==='bfdesc')a.sort((x,y)=>(y.bf??-1)-(x.bf??-1));
   else a.sort((x,y)=>x.day<y.day?1:-1);
   return a;}
+window.openCompare=()=>{const ps=(S.photos||[]).slice().sort((a,b)=>a.day<b.day?-1:1);
+  if(ps.length<2){toast('Add at least two photos to compare');return;}
+  window._cmp={l:ps[0].id,r:ps[ps.length-1].id};renderCompare();};
+window.renderCompare=()=>{const ps=(S.photos||[]);const l=ps.find(p=>p.id===window._cmp.l),r=ps.find(p=>p.id===window._cmp.r);
+  if(!l||!r){closeSheet();return;}
+  const optHtml=sel=>ps.slice().sort((a,b)=>a.day<b.day?-1:1).map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${p.day}${p.bf!=null?' · '+p.bf+'%':''}</option>`).join('');
+  const delta=(l.bf!=null&&r.bf!=null)?(r.bf-l.bf):null;
+  const days=Math.abs(Math.round((Date.parse(r.day)-Date.parse(l.day))/864e5));
+  openSheet(`<h3>Before / after</h3>
+    <div class="row" style="gap:8px">
+      <div style="flex:1"><img src="${l.src}" style="width:100%;border-radius:12px;background:#0E1217"><div class="muted sm" style="text-align:center;margin-top:5px">${l.day}${l.bf!=null?' · '+l.bf+'%':''}<br><span style="text-transform:capitalize">${l.pose||''}</span></div></div>
+      <div style="flex:1"><img src="${r.src}" style="width:100%;border-radius:12px;background:#0E1217"><div class="muted sm" style="text-align:center;margin-top:5px">${r.day}${r.bf!=null?' · '+r.bf+'%':''}<br><span style="text-transform:capitalize">${r.pose||''}</span></div></div></div>
+    ${delta!=null?`<div style="text-align:center;margin:16px 0"><span style="font-size:30px;font-weight:800;color:${delta<0?'#BEF264':'#F6735A'}">${delta>0?'+':''}${delta.toFixed(1)}%</span><div class="muted sm">body fat over ${days} days</div></div>`:`<div class="muted sm" style="text-align:center;margin:16px 0">Estimate both photos to see the body-fat change.</div>`}
+    <div class="row" style="gap:8px">
+      <select class="in" onchange="window._cmp.l=this.value;renderCompare()">${optHtml(l.id)}</select>
+      <select class="in" onchange="window._cmp.r=this.value;renderCompare()">${optHtml(r.id)}</select></div>`);};
 function compressImage(file,maxW=340){return new Promise((res,rej)=>{const img=new Image();
   img.onload=()=>{const sc=Math.min(1,maxW/img.width);const c=document.createElement('canvas');
     c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
     c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.6));};
   img.onerror=rej;img.src=URL.createObjectURL(file);});}
 window.addVaultPhoto=async()=>{const file=await pickImage();if(!file)return;
-  try{const src=await compressImage(file);S.photos.unshift({id:'p'+Date.now(),day:today(),src,bf:null,conf:0,pose:'front'});
-    try{save();}catch(e){S.photos.shift();toast('Storage full — delete some photos first');return;}
-    renderVault();toast('Photo added — now estimate body fat');}catch(e){toast('Could not load that image');}};
+  let src;try{src=await compressImage(file);}catch(e){toast('Could not load that image');return;}
+  window._pendingPhoto=src;
+  openSheet(`<h3>Which pose?</h3><div class="muted sm" style="margin-bottom:12px">Tag it so you can compare like-for-like later.</div>
+    <div class="row" style="gap:10px">${['front','side','back'].map(p=>`<button class="btn" style="flex:1" onclick="savePending('${p}')">${p[0].toUpperCase()+p.slice(1)}</button>`).join('')}</div>`);};
+window.savePending=pose=>{const src=window._pendingPhoto;if(!src)return;window._pendingPhoto=null;
+  S.photos.unshift({id:'p'+Date.now(),day:today(),src,bf:null,conf:0,pose});
+  try{save();}catch(e){S.photos.shift();toast('Storage full — delete some photos first');return;}
+  closeSheet();renderVault();toast('Photo added ('+pose+') — now estimate body fat');};
 const BF_SCHEMA={type:'object',additionalProperties:false,required:['body_fat_pct','confidence'],
   properties:{body_fat_pct:{type:'number'},confidence:{type:'number'},notes:{type:'string'}}};
 async function analyzeBF(dataUrl,key){
@@ -912,7 +937,7 @@ window.estimateAllPhotos=async()=>{const key=localStorage.getItem('anthropicKey'
   const todo=(S.photos||[]).filter(p=>p.bf==null);if(!todo.length){toast('All photos already estimated');return;}
   for(const p of todo){await estimatePhotoBF(p.id);}};
 window.openPhoto=id=>{const p=(S.photos||[]).find(x=>x.id===id);if(!p)return;
-  openSheet(`<h3>${p.day}</h3>
+  openSheet(`<h3>${p.day} <span class="muted sm" style="font-weight:400;text-transform:capitalize">· ${p.pose||'front'}</span></h3>
     <img src="${p.src}" style="width:100%;max-height:48vh;object-fit:contain;border-radius:14px;background:#0E1217">
     <div class="row" style="justify-content:space-between;margin:14px 0 10px">
       <div><div class="muted sm">Body fat (visual estimate)</div>
@@ -922,20 +947,46 @@ window.openPhoto=id=>{const p=(S.photos||[]).find(x=>x.id===id);if(!p)return;
     <button class="ghost" style="margin-top:8px" onclick="delPhoto('${id}')">Delete photo</button>`);};
 window.delPhoto=id=>{S.photos=(S.photos||[]).filter(p=>p.id!==id);save();renderVault();closeSheet();toast('Deleted');};
 window.renderPhotos=()=>{const box=document.getElementById('vaultPhotos');if(!box)return;const ps=sortedPhotos();
-  box.innerHTML=`<div class="row" style="justify-content:space-between;margin:4px 2px 10px"><h3 style="margin:0">Progress photos</h3>
+  const poseChip=(v,lbl)=>`<button class="chip ${_photoPose===v?'on':''}" onclick="setPhotoPose(${v?`'${v}'`:'null'})">${lbl}</button>`;
+  box.innerHTML=`<div class="row" style="justify-content:space-between;margin:4px 2px 8px"><h3 style="margin:0">Progress photos</h3>
     <div><button class="chip ${_photoSort==='date'?'on':''}" onclick="setPhotoSort('date')">Date</button><button class="chip ${_photoSort==='bfasc'?'on':''}" onclick="setPhotoSort('bfasc')">Leanest</button><button class="chip ${_photoSort==='bfdesc'?'on':''}" onclick="setPhotoSort('bfdesc')">Highest BF</button></div></div>
+    <div style="margin-bottom:10px">${poseChip(null,'All poses')}${poseChip('front','Front')}${poseChip('side','Side')}${poseChip('back','Back')}</div>
     ${ps.length?`<div class="pgrid">${ps.map(p=>`<div class="pcell" onclick="openPhoto('${p.id}')"><img src="${p.src}" loading="lazy">
-      <div class="pbadge">${p.bf!=null?p.bf+'%':'<span style="color:#BEF264">est</span>'}</div><div class="pdate">${p.day.slice(5)}</div></div>`).join('')}</div>`
-      :'<div class="muted sm" style="padding:10px 2px">No photos yet — add front/side/back shots and let AI estimate body fat.</div>'}
+      <div class="pbadge">${p.bf!=null?p.bf+'%':'<span style="color:#BEF264">est</span>'}</div>${p.pose?`<div class="ppose">${p.pose}</div>`:''}<div class="pdate">${p.day.slice(5)}</div></div>`).join('')}</div>`
+      :'<div class="muted sm" style="padding:10px 2px">No photos here yet — add front/side/back shots and let AI estimate body fat.</div>'}
     <div class="row" style="gap:10px;margin-top:12px">
       <button class="ghost" onclick="addVaultPhoto()"><i class="ti ti-camera-plus"></i> Add photo</button>
       <button class="ghost" onclick="estimateAllPhotos()"><i class="ti ti-sparkles"></i> Estimate all</button></div>
+    <button class="ghost" style="margin-top:8px" onclick="openCompare()"><i class="ti ti-arrows-left-right"></i> Before / after</button>
     <div class="muted sm" style="margin-top:8px">AI body-fat from a photo is a rough visual estimate — pair it with the Navy method and the scale.</div>`;};
 
+// ---- Vault privacy lock ----
+let _vaultUnlocked=false;
+window.lockVaultNow=()=>{_vaultUnlocked=false;renderVault();toast('Vault locked');};
+window.tryUnlock=()=>{const v=(document.getElementById('pinv')||{}).value;if(v===S.lock.pin){_vaultUnlocked=true;renderVault();}else{toast('Wrong PIN');}};
+window.setupVaultLock=()=>{openSheet(`<h3>Vault privacy lock</h3>
+  <div class="muted sm" style="margin-bottom:12px">Require a PIN to open your Vault — photos, capsules and reviews. On this web preview the PIN lives only in this browser; the iOS app uses Face ID / the device passcode.</div>
+  ${S.lock.enabled
+    ?`<button class="ghost" onclick="disableLock()"><i class="ti ti-lock-open"></i> Turn off Vault lock</button>`
+    :`<input id="pin1" class="in" inputmode="numeric" maxlength="6" placeholder="New PIN (4–6 digits)" style="margin-bottom:10px;text-align:center;letter-spacing:5px">
+      <button class="btn" onclick="enableLock()">Enable lock</button>`}`);};
+window.enableLock=()=>{const v=(document.getElementById('pin1').value||'').trim();if(!/^\d{4,6}$/.test(v)){toast('Use 4–6 digits');return;}
+  S.lock={enabled:true,pin:v};_vaultUnlocked=true;save();closeSheet();renderVault();if(window.renderMore)renderMore();toast('Vault lock on');};
+window.disableLock=()=>{S.lock={enabled:false,pin:''};_vaultUnlocked=true;save();closeSheet();renderVault();if(window.renderMore)renderMore();toast('Vault lock off');};
+function renderVaultLock(){$('#view-vault').innerHTML=`<div style="text-align:center;padding:64px 16px">
+  <i class="ti ti-lock" style="font-size:54px;color:var(--accent)"></i>
+  <h3 style="margin:16px 0 6px">Vault locked</h3>
+  <div class="muted sm" style="margin-bottom:18px">Enter your PIN to view your progress archive.</div>
+  <input id="pinv" class="in" inputmode="numeric" maxlength="6" placeholder="PIN" style="max-width:200px;margin:0 auto 12px;text-align:center;letter-spacing:6px" onkeydown="if(event.key==='Enter')tryUnlock()">
+  <button class="btn" style="max-width:200px;margin:0 auto" onclick="tryUnlock()">Unlock</button></div>`;
+  setTimeout(()=>{const e=document.getElementById('pinv');if(e)e.focus();},50);}
+
 function renderVault(){
+  if(S.lock&&S.lock.enabled&&!_vaultUnlocked){renderVaultLock();return;}
   const ms=milestones(),allTags=[...new Set(S.capsules.flatMap(c=>c.tags||[]))];
   $('#view-vault').innerHTML=`
-    <div class="row" style="justify-content:space-between;margin:4px 2px 12px"><h3 style="margin:0">Progress Vault</h3><i class="ti ti-lock-open muted"></i></div>
+    <div class="row" style="justify-content:space-between;margin:4px 2px 12px"><h3 style="margin:0">Progress Vault</h3>
+      <i class="ti ti-${S.lock.enabled?'lock':'lock-open'} muted" style="cursor:pointer;font-size:18px" onclick="${S.lock.enabled?'lockVaultNow()':'setupVaultLock()'}"></i></div>
     ${ms.length?`<div class="hscroll" style="margin-bottom:14px">${ms.map(m=>`<div class="qchip" style="min-width:auto;display:flex;align-items:center;gap:8px"><i class="ti ti-${m.i}" style="color:${m.c};font-size:18px"></i><span style="font-weight:600;white-space:nowrap">${m.t}</span></div>`).join('')}</div>`:''}
     <button class="btn" style="margin-bottom:12px" onclick="generateReview()"><i class="ti ti-sparkles"></i> Generate weekly review</button>
     <div id="vaultPhotos" style="margin-bottom:18px"></div>
@@ -959,6 +1010,9 @@ function renderMore(){
     <div class="card" onclick="openKeySetup()" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-camera"></i> Food photo AI</span>
       <span class="muted sm">${localStorage.getItem('anthropicKey')?'On':'Set up'}</span></div></div>
+    <div class="card" onclick="setupVaultLock()" style="cursor:pointer">
+      <div class="row" style="justify-content:space-between"><span><i class="ti ti-lock"></i> Vault privacy lock</span>
+      <span class="muted sm">${S.lock.enabled?'On':'Off'}</span></div></div>
     <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv6');S=load();renderAll();toast('Reset');}" style="cursor:pointer">
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-refresh"></i> Reset demo data</span></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px">Web preview of MacroVault.<br>The native iOS app adds barcode scan, camera AI, biometric Vault lock & encrypted storage.</div>`;
