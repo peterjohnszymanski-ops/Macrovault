@@ -1,0 +1,7 @@
+name = "macrovault"
+compatibility_date = "2025-01-01"
+
+# Serve the PWA as static assets (no server code needed).
+[assets]
+directory = "./web_preview"
+not_found_handling = "single-page-application"
