@@ -123,6 +123,8 @@
 const C=2*Math.PI*52;
 const $=s=>document.querySelector(s);
 const fmt=n=>Math.round(n).toLocaleString();
+// AI model — default to Haiku 4.5 (cheapest); user can pick a stronger one.
+const aiModel=()=>localStorage.getItem('aiModel')||'claude-haiku-4-5';
 const today=()=> new Date().toISOString().slice(0,10);
 const dayKey=off=>{const d=new Date();d.setDate(d.getDate()+off);return d.toISOString().slice(0,10);};
 const dayShort=off=>['S','M','T','W','T','F','S'][new Date(Date.now()+off*864e5).getDay()];
@@ -762,7 +764,7 @@ async function analyzeFood(b64,mime,key){
   // forced to call log_foods, and we read the typed args from the tool_use block.
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-opus-4-8',max_tokens:1024,
+    body:JSON.stringify({model:aiModel(),max_tokens:1024,
       tools:[{name:'log_foods',description:'Record every distinct food detected in the meal photo with estimated calories and macros for the portion actually shown.',input_schema:FOOD_SCHEMA}],
       tool_choice:{type:'tool',name:'log_foods'},
       messages:[{role:'user',content:[
@@ -799,10 +801,18 @@ window.openKeySetup=()=>{
   openSheet(`<h3>Food photo AI</h3>
     <div class="muted sm" style="margin-bottom:10px">Snap a meal and Claude estimates calories + macros. In this local preview your Anthropic API key is stored only in this browser and the photo goes straight to Anthropic. (The iOS app routes this through a server, so no key lives on the device.)</div>
     <input id="ak" class="in" placeholder="sk-ant-..." value="${k}">
-    <button class="btn" style="margin-top:12px" onclick="saveKey()">Save key</button>
+    <div class="muted sm" style="margin:12px 2px 6px">Model — cheaper saves credits</div>
+    <select id="amodel" class="in">
+      <option value="claude-haiku-4-5" ${aiModel()==='claude-haiku-4-5'?'selected':''}>Haiku 4.5 — cheapest ($1 / $5 per M)</option>
+      <option value="claude-sonnet-4-6" ${aiModel()==='claude-sonnet-4-6'?'selected':''}>Sonnet 4.6 — balanced ($3 / $15)</option>
+      <option value="claude-opus-4-8" ${aiModel()==='claude-opus-4-8'?'selected':''}>Opus 4.8 — most accurate ($5 / $25)</option>
+    </select>
+    <button class="btn" style="margin-top:12px" onclick="saveKey()">Save</button>
     ${k?`<button class="ghost" style="margin-top:8px" onclick="localStorage.removeItem('anthropicKey');closeSheet();renderMore();toast('Key removed')">Remove key</button>`:''}`);
 };
-window.saveKey=()=>{const v=document.getElementById('ak').value.trim();if(v){localStorage.setItem('anthropicKey',v);toast('Saved — tap Snap');}closeSheet();renderMore();};
+window.saveKey=()=>{const v=document.getElementById('ak').value.trim();if(v)localStorage.setItem('anthropicKey',v);
+  const m=document.getElementById('amodel');if(m)localStorage.setItem('aiModel',m.value);
+  toast('Saved'+(v?' — tap Snap':''));closeSheet();renderMore();};
 function showLoading(m){let d=document.getElementById('load');if(!d){d=document.createElement('div');d.id='load';d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;text-align:center;padding:20px';document.body.append(d);}d.textContent=m||'Analyzing…';}
 function hideLoading(){const d=document.getElementById('load');if(d)d.remove();}
 
@@ -836,7 +846,7 @@ window.generateReview=async()=>{
   showLoading('Claude is reviewing your week…');
   try{
     const prompt=`You are a supportive but honest nutrition coach. Write a ~120-word weekly review in 3 short paragraphs: what worked, what to watch, what to do next week. Specific and encouraging, not preachy. Data — days logged ${s.days}/7; avg ${s.avg} kcal vs ${GOAL.cal} target; avg protein ${s.avgP}g vs ${GOAL.p}g; protein target hit on ${s.pAdh}% of days; weekday avg ${s.weekday} kcal, weekend avg ${s.weekend} kcal; weight change ${s.wDelta.toFixed(1)}kg overall; ${s.st}-day streak${s.plateau?'; weight trend flat recently':''}.`;
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-8',max_tokens:400,messages:[{role:'user',content:prompt}]})});
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:aiModel(),max_tokens:400,messages:[{role:'user',content:prompt}]})});
     hideLoading();
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json();const txt=(j.content||[]).find(b=>b.type==='text');
@@ -927,7 +937,7 @@ async function analyzeBF(dataUrl,key){
   const mime=(meta.match(/data:(.*?);/)||[])[1]||'image/jpeg';
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
     headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-opus-4-8',max_tokens:512,
+    body:JSON.stringify({model:aiModel(),max_tokens:512,
       tools:[{name:'estimate_bf',description:'Estimate visible body-fat percentage from a physique progress photo.',input_schema:BF_SCHEMA}],
       tool_choice:{type:'tool',name:'estimate_bf'},
       messages:[{role:'user',content:[
