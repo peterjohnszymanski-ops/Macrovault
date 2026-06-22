@@ -50,9 +50,11 @@
   .tabbar button.on{color:var(--accent);}
   .sheet-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:flex-end;
     justify-content:center; z-index:20;}
-  .sheet-bg.show{display:flex;}
+  .sheet-bg.show{display:flex; animation:bgFadeIn .2s ease both;}
+  @keyframes bgFadeIn{from{opacity:0}to{opacity:1}}
   .sheet{width:100%; max-width:430px; background:var(--bg); border-radius:24px 24px 0 0;
-    padding:10px 16px 24px; max-height:88vh; overflow:auto;}
+    padding:10px 16px 24px; max-height:88vh; overflow:auto; animation:sheetUp .28s cubic-bezier(.16,1,.3,1) both;}
+  @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
   .grab{width:44px; height:5px; background:var(--surfH); border-radius:3px; margin:6px auto 12px;}
   .fitem{display:flex; justify-content:space-between; align-items:center; padding:11px 4px;
     border-bottom:.5px solid var(--surfH); cursor:pointer;}
@@ -144,9 +146,9 @@ const DB=[
   ['Sweet potato','1 medium',112,2,26,0.1],['Cottage cheese','100 g',98,11,3.4,4.3],
 ];
 const METRICS=[
-  {key:'bench',name:'Bench press 1RM',unit:'kg',hi:true,color:'#BEF264'},
-  {key:'squat',name:'Squat 1RM',unit:'kg',hi:true,color:'#F6B73C'},
-  {key:'deadlift',name:'Deadlift 1RM',unit:'kg',hi:true,color:'#A78BFA'},
+  {key:'bench',name:'Bench press 1RM',unit:'lbs',hi:true,color:'#BEF264'},
+  {key:'squat',name:'Squat 1RM',unit:'lbs',hi:true,color:'#F6B73C'},
+  {key:'deadlift',name:'Deadlift 1RM',unit:'lbs',hi:true,color:'#A78BFA'},
   {key:'bodyfat',name:'Body fat',unit:'%',hi:false,color:'#F6735A'},
 ];
 
@@ -212,10 +214,10 @@ function load(){
   const seed={
     meals:{breakfast:[],lunch:[],dinner:[],snack:[]},
     usage:{}, water:0,
-    weight:[[dayKey(-168),86.2],[dayKey(-140),84.6],[dayKey(-112),83.1],[dayKey(-84),82.0],[dayKey(-56),81.2],[dayKey(-28),80.9],[dayKey(-3),80.6]],
-    metrics:{bench:[[dayKey(-168),80],[dayKey(-126),86],[dayKey(-84),92],[dayKey(-42),97],[dayKey(-7),102]],
+    weight:[[dayKey(-168),190],[dayKey(-140),187],[dayKey(-112),183],[dayKey(-84),181],[dayKey(-56),179],[dayKey(-28),178],[dayKey(-3),177]],
+    metrics:{bench:[[dayKey(-168),176],[dayKey(-126),190],[dayKey(-84),203],[dayKey(-42),214],[dayKey(-7),225]],
              bodyfat:[[dayKey(-168),21.5],[dayKey(-112),19.6],[dayKey(-70),18.0],[dayKey(-28),16.7],[dayKey(-3),16.0]],
-             squat:[[dayKey(-140),120],[dayKey(-70),140],[dayKey(-7),155]],deadlift:[[dayKey(-140),150],[dayKey(-70),175],[dayKey(-7),190]]},
+             squat:[[dayKey(-140),265],[dayKey(-70),308],[dayKey(-7),341]],deadlift:[[dayKey(-140),330],[dayKey(-70),385],[dayKey(-7),419]]},
     customMetrics:[],
     meas:{waist:84,neck:38,hips:0,height:180,sex:'male'},
     capsules:[{day:dayKey(-14),title:'Best week',tags:['best week','high protein'],kcal:2180,protein:172,streak:7}],
@@ -244,7 +246,7 @@ function totals(){let t={kcal:0,p:0,c:0,f:0};for(const s in S.meals)S.meals[s].f
 function mealKcal(s){return S.meals[s].reduce((a,x)=>a+x.kcal*x.qty,0);}
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1400);}
-function openSheet(html){$('#sheet').innerHTML='<div class="grab"></div>'+html;$('#sheetBg').classList.add('show');}
+function openSheet(html){$('#sheet').innerHTML='<div class="grab" onclick="closeSheet()" style="cursor:pointer;width:100%;margin-bottom:4px"></div>'+html;$('#sheetBg').classList.add('show');}
 function closeSheet(){$('#sheetBg').classList.remove('show');}
 $('#sheetBg').addEventListener('click',e=>{if(e.target.id==='sheetBg')closeSheet();});
 
@@ -259,7 +261,7 @@ function donut(t){
   else{const lp=C*pc/tot,lc=C*cc/tot,lf=C*fc/tot;
     arcs=`<circle cx="60" cy="60" r="52" fill="none" stroke="#1C2530" stroke-width="14"/>`+
       arc(lp,0,'#2DD4BF')+arc(lc,-lp,'#F6B73C')+arc(lf,-(lp+lc),'#A78BFA');}
-  return `<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="calories left">
+  return `<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="calories left" onclick="openDayFoodLog()" style="cursor:pointer;flex-shrink:0">
     <g transform="rotate(-90 60 60)">${arcs}</g>
     <text x="60" y="56" text-anchor="middle" fill="#E7ECEF" font-size="26" font-weight="800">${fmt(GOAL.cal-t.kcal)}</text>
     <text x="60" y="74" text-anchor="middle" fill="#8A949C" font-size="11">cal left</text></svg>`;
@@ -286,6 +288,28 @@ function insights(){const t=totals(),out=[],left=GOAL.cal-t.kcal,pGap=Math.round
   if(!out.length)out.push({i:'bulb',c:'#BEF264',t:'Log your first meal to unlock daily insights.'});
   return out.slice(0,3);
 }
+window.openDayFoodLog=()=>{
+  const t=totals();
+  const secs=SLOTS.map(([k,n])=>{const foods=S.meals[k];if(!foods.length)return '';
+    const rows=foods.map((x,i)=>`<div class="fitem" onclick="openMeal('${k}')">
+      <div style="flex:1;min-width:0"><div>${x.name}${x.brand?' · '+x.brand:''}</div>
+      <div class="muted sm">${x.qty%1===0?x.qty:x.qty.toFixed(1)} × ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}</div></div>
+      <i class="ti ti-chevron-right muted"></i></div>`).join('');
+    return `<div class="muted sm" style="margin:12px 2px 4px;font-weight:600">${n} · ${fmt(mealKcal(k))} kcal</div>${rows}`;}).join('');
+  openSheet(`<h3>Today's food log</h3>
+    <div class="row" style="gap:4px;margin-bottom:12px">
+      <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 8px">
+        <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Eaten</div>
+        <div style="font-size:18px;font-weight:800">${fmt(t.kcal)}</div></div>
+      <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 8px">
+        <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Left</div>
+        <div style="font-size:18px;font-weight:800;color:#BEF264">${fmt(GOAL.cal-t.kcal)}</div></div>
+      <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 8px">
+        <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Goal</div>
+        <div style="font-size:18px;font-weight:800">${fmt(GOAL.cal)}</div></div>
+    </div>
+    ${secs||'<div class="muted sm" style="padding:14px 2px">Nothing logged yet.</div>'}
+    <button class="btn" style="margin-top:14px" onclick="addFood('${currentSlot()}')"><i class="ti ti-plus"></i> Add food</button>`);};
 window.quickLog=i=>{const f=window._recent[i];if(!f)return;const slot=currentSlot();
   S.meals[slot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});
   const k=fkey(f);S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};S.usage[k].f=f;S.usage[k].count++;S.usage[k].last=Date.now();
@@ -408,10 +432,16 @@ function renderToday(){
           ${barRow('Fat',t.f,GOAL.f,'#A78BFA')}
         </div>
       </div>
-      <div class="row" style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--surfH)">
-        <div class="stat"><div class="muted sm">Eaten</div><div class="v">${fmt(t.kcal)}</div></div>
-        <div class="stat"><div class="muted sm">Left</div><div class="v" style="color:#BEF264">${fmt(GOAL.cal-t.kcal)}</div></div>
-        <div class="stat"><div class="muted sm">Goal</div><div class="v">${fmt(GOAL.cal)}</div></div>
+      <div class="row" style="margin-top:14px;padding-top:12px;border-top:.5px solid var(--surfH);gap:6px">
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 4px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Eaten</div>
+          <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1">${fmt(t.kcal)}</div></div>
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 4px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Left</div>
+          <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1;color:#BEF264">${fmt(GOAL.cal-t.kcal)}</div></div>
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 4px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Goal</div>
+          <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1">${fmt(GOAL.cal)}</div></div>
       </div>
     </div>
 
@@ -457,8 +487,8 @@ function renderToday(){
       <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="logWeight()">
         <div class="row" style="justify-content:space-between"><div class="muted sm">Weight trend</div>
           <span style="color:#2DD4BF">${spark(wvals,'#2DD4BF')}</span></div>
-        <div style="font-size:22px;font-weight:800">${w?w.toFixed(1)+' kg':'—'}</div>
-        <div class="sm" style="color:${wDelta<=0?'#BEF264':'#F6B73C'}">${wDelta?(wDelta>0?'+':'')+wDelta.toFixed(1)+' kg overall':'tap to log'}</div></div>
+        <div style="font-size:22px;font-weight:800">${w?w.toFixed(1)+' lbs':'—'}</div>
+        <div class="sm" style="color:${wDelta<=0?'#BEF264':'#F6B73C'}">${wDelta?(wDelta>0?'+':'')+wDelta.toFixed(1)+' lbs overall':'tap to log'}</div></div>
     </div>`;
 }
 
@@ -466,7 +496,7 @@ window.openMeal=k=>{
   const name=SLOTS.find(s=>s[0]===k)[1];
   let items=S.meals[k].map((x,i)=>`<div class="fitem" onclick="editItemQty('${k}',${i})"><div><div>${x.name}${x.brand?' · '+x.brand:''}</div>
     <div class="muted sm">${x.qty%1===0?x.qty:x.qty.toFixed(1)} serving · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}</div></div>
-    <i class="ti ti-x muted" onclick="event.stopPropagation();delItem('${k}',${i})"></i></div>`).join('')||'<div class="muted" style="padding:14px 2px">Nothing logged yet.</div>';
+    <button onclick="event.stopPropagation();delItem('${k}',${i})" style="background:none;border:none;color:var(--muted);min-width:44px;min-height:44px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;border-radius:12px;flex-shrink:0"><i class="ti ti-x"></i></button></div>`).join('')||'<div class="muted" style="padding:14px 2px">Nothing logged yet.</div>';
   openSheet(`<h3>${name} · ${fmt(mealKcal(k))} kcal</h3>
     <div class="muted sm" style="margin-bottom:6px">Tap an item to adjust the portion.</div>${items}
     <button class="btn" style="margin-top:14px" onclick="addFood('${k}')"><i class="ti ti-plus"></i> Add food</button>`);
@@ -475,14 +505,24 @@ window.delItem=(k,i)=>{S.meals[k].splice(i,1);save();renderToday();openMeal(k);t
 window.editItemQty=(k,i)=>{window._eq={k,i};renderEditQty();};
 function renderEditQty(){const {k,i}=window._eq;const it=S.meals[k][i];if(!it)return;
   openSheet(`<h3>${it.name}${it.brand?' · '+it.brand:''}</h3>
-    <div class="row" style="justify-content:center;gap:20px;margin:18px 0">
-      <i class="ti ti-circle-minus" style="font-size:36px;color:#BEF264" onclick="eqQty(-0.5)"></i>
-      <div style="text-align:center;min-width:90px"><div style="font-size:32px;font-weight:800">${it.qty%1===0?it.qty:it.qty.toFixed(1)}</div>
-        <div class="muted sm">servings · ${fmt(it.kcal*it.qty)} kcal</div></div>
-      <i class="ti ti-circle-plus" style="font-size:36px;color:#BEF264" onclick="eqQty(0.5)"></i></div>
+    <div class="row" style="justify-content:center;gap:16px;margin:18px 0;align-items:center">
+      <button onclick="eqQty(-0.5)" style="background:none;border:none;cursor:pointer;padding:8px;line-height:0"><i class="ti ti-circle-minus" style="font-size:38px;color:#BEF264"></i></button>
+      <div style="text-align:center;min-width:110px">
+        <input type="number" id="eqInput" value="${it.qty%1===0?it.qty:it.qty.toFixed(2)}" step="any" min="0.1"
+          style="width:100%;background:none;border:none;color:#E7ECEF;text-align:center;font-size:34px;font-weight:800;outline:none;padding:0;-moz-appearance:textfield"
+          oninput="eqQtyDirect(this.value)">
+        <div class="muted sm" id="eqKcal">${fmt(it.kcal*it.qty)} kcal</div></div>
+      <button onclick="eqQty(0.5)" style="background:none;border:none;cursor:pointer;padding:8px;line-height:0"><i class="ti ti-circle-plus" style="font-size:38px;color:#BEF264"></i></button></div>
     <button class="btn" onclick="closeSheet();renderToday();toast('Updated')">Done</button>
-    <button class="ghost" style="margin-top:8px" onclick="delItem('${k}',${i});closeSheet()">Remove from ${SLOTS.find(s=>s[0]===k)[1]}</button>`);}
-window.eqQty=d=>{const {k,i}=window._eq;const it=S.meals[k][i];it.qty=Math.max(0.5,Math.round((it.qty+d)*2)/2);save();renderEditQty();};
+    <button class="ghost" style="margin-top:8px" onclick="delItem('${k}',${i});closeSheet()">Remove from ${SLOTS.find(s=>s[0]===k)[1]}</button>`);
+  setTimeout(()=>{const e=document.getElementById('eqInput');if(e){e.focus();e.select();}},80);}
+window.eqQty=d=>{const {k,i}=window._eq;const it=S.meals[k][i];
+  const inp=document.getElementById('eqInput');const cur=inp?parseFloat(inp.value)||it.qty:it.qty;
+  it.qty=Math.max(0.1,+(cur+d).toFixed(2));save();
+  if(inp)inp.value=it.qty%1===0?it.qty:it.qty.toFixed(2);
+  const el=document.getElementById('eqKcal');if(el)el.textContent=fmt(it.kcal*it.qty)+' kcal';};
+window.eqQtyDirect=v=>{const {k,i}=window._eq;const it=S.meals[k][i];const n=parseFloat(v);if(!isNaN(n)&&n>0){it.qty=n;save();
+  const el=document.getElementById('eqKcal');if(el)el.textContent=fmt(it.kcal*n)+' kcal';}};
 
 let activeSlot='snack';
 let DISPLAY=[];        // foods currently shown in the sheet, indexed for logging
@@ -504,20 +544,32 @@ function rowHtml(f){
 }
 window.portion=i=>{const f=DISPLAY[i];if(!f)return;window._port={f,qty:f.lastQty||1};renderPortion();};
 function renderPortion(){const {f,qty}=window._port;const kc=Math.round(f.kcal*qty);
-  const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderPortion()">${n}</button>`).join('');
+  const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';document.querySelectorAll('.portChip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${n}</button>`).join('');
   openSheet(`<h3>${dispName(f)}</h3><div class="muted sm">${f.kcal} kcal · ${f.serv}</div>
-    <div class="row" style="justify-content:center;gap:22px;margin:20px 0 14px">
-      <i class="ti ti-circle-minus" style="font-size:38px;color:#BEF264" onclick="portQty(-0.5)"></i>
-      <div style="text-align:center;min-width:80px"><div style="font-size:34px;font-weight:800">${qty%1===0?qty:qty.toFixed(1)}</div><div class="muted sm">servings</div></div>
-      <i class="ti ti-circle-plus" style="font-size:38px;color:#BEF264" onclick="portQty(0.5)"></i></div>
+    <div class="row" style="justify-content:center;gap:16px;margin:20px 0 14px;align-items:center">
+      <button onclick="portQty(-0.5)" style="background:none;border:none;cursor:pointer;padding:8px;line-height:0"><i class="ti ti-circle-minus" style="font-size:38px;color:#BEF264"></i></button>
+      <div style="text-align:center;min-width:100px">
+        <input type="number" id="portInput" value="${qty%1===0?qty:qty.toFixed(2)}" step="any" min="0.1"
+          style="width:100%;background:none;border:none;color:#E7ECEF;text-align:center;font-size:34px;font-weight:800;outline:none;padding:0;-moz-appearance:textfield"
+          oninput="portQtyDirect(this.value)">
+        <div class="muted sm">servings</div></div>
+      <button onclick="portQty(0.5)" style="background:none;border:none;cursor:pointer;padding:8px;line-height:0"><i class="ti ti-circle-plus" style="font-size:38px;color:#BEF264"></i></button></div>
     <div class="row" style="justify-content:space-around;text-align:center;margin-bottom:16px">
-      <div><div style="font-size:18px;font-weight:800">${kc}</div><div class="muted sm">kcal</div></div>
-      <div><div style="font-size:18px;font-weight:800;color:#2DD4BF">${Math.round(f.p*qty)}g</div><div class="muted sm">protein</div></div>
-      <div><div style="font-size:18px;font-weight:800;color:#F6B73C">${Math.round(f.c*qty)}g</div><div class="muted sm">carbs</div></div>
-      <div><div style="font-size:18px;font-weight:800;color:#A78BFA">${Math.round(f.f*qty)}g</div><div class="muted sm">fat</div></div></div>
+      <div><div id="portKcal" style="font-size:18px;font-weight:800">${kc}</div><div class="muted sm">kcal</div></div>
+      <div><div id="portProt" style="font-size:18px;font-weight:800;color:#2DD4BF">${Math.round(f.p*qty)}g</div><div class="muted sm">protein</div></div>
+      <div><div id="portCarb" style="font-size:18px;font-weight:800;color:#F6B73C">${Math.round(f.c*qty)}g</div><div class="muted sm">carbs</div></div>
+      <div><div id="portFat" style="font-size:18px;font-weight:800;color:#A78BFA">${Math.round(f.f*qty)}g</div><div class="muted sm">fat</div></div></div>
     <div style="margin-bottom:12px">${chips}</div>
-    <button class="btn" onclick="portAdd()">Add to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);}
-window.portQty=d=>{window._port.qty=Math.max(0.5,Math.round((window._port.qty+d)*2)/2);renderPortion();};
+    <button class="btn" onclick="portAdd()">Add to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);
+  setTimeout(()=>{const e=document.getElementById('portInput');if(e){e.focus();e.select();}},80);}
+window.portQty=d=>{const inp=document.getElementById('portInput');const cur=inp?parseFloat(inp.value)||window._port.qty:window._port.qty;
+  window._port.qty=Math.max(0.1,+(cur+d).toFixed(2));const f=window._port.f,qty=window._port.qty;
+  if(inp)inp.value=qty%1===0?qty:qty.toFixed(2);
+  const upd=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  upd('portKcal',Math.round(f.kcal*qty));upd('portProt',Math.round(f.p*qty)+'g');upd('portCarb',Math.round(f.c*qty)+'g');upd('portFat',Math.round(f.f*qty)+'g');};
+window.portQtyDirect=v=>{const n=parseFloat(v);if(!isNaN(n)&&n>0){window._port.qty=n;const f=window._port.f;
+  const upd=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
+  upd('portKcal',Math.round(f.kcal*n));upd('portProt',Math.round(f.p*n)+'g');upd('portCarb',Math.round(f.c*n)+'g');upd('portFat',Math.round(f.f*n)+'g');save();}};
 window.portAdd=()=>{const {f,qty}=window._port;
   S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty,m:f.m||{}});
   const k=fkey(f);S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};S.usage[k].f=f;S.usage[k].count++;S.usage[k].last=Date.now();
@@ -569,7 +621,7 @@ window.usuals=()=>{openSheet(`<h3>Your usuals</h3>
 window.logUsual=()=>{['Greek yogurt','Oats'].forEach(n=>{const f=G(DB.find(d=>d[0]===n));S.meals.breakfast.push({name:f.name,brand:'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});});
   save();renderToday();closeSheet();toast('Logged usual breakfast');};
 window.water=ml=>{S.water=Math.max(0,S.water+ml);save();renderToday();};
-window.logWeight=()=>{const v=parseFloat(prompt('Log weight (kg):',S.weight.length?S.weight[S.weight.length-1][1]:'80'));
+window.logWeight=()=>{const v=parseFloat(prompt('Log weight (lbs):',S.weight.length?S.weight[S.weight.length-1][1]:'180'));
   if(!v)return;S.weight.push([today(),v]);save();renderToday();toast('Weight logged');};
 
 function norm(arr){const v=arr.map(x=>x[1]);const mn=Math.min(...v),mx=Math.max(...v);const r=(mx-mn)||1;
@@ -587,7 +639,7 @@ function spark(pts,color){if(pts.length<2)return '';const v=pts.map(p=>p[1]),mn=
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="${color}" stroke-width="2" points="${P}"/></svg>`;}
 
 function renderProgress(){
-  const defs=[{key:'weight',name:'Weight',unit:'kg',hi:false,dash:true},...allDefs()];
+  const defs=[{key:'weight',name:'Weight',unit:'lbs',hi:false,dash:true},...allDefs()];
   const series=[];
   defs.forEach(d=>{const raw=d.key==='weight'?S.weight:(S.metrics[d.key]||[]);if(!raw||!raw.length)return;
     series.push({...d,color:d.key==='weight'?'#2DD4BF':colorFor(d.key),pts:filterPts(raw)});});
@@ -638,7 +690,7 @@ window.logMetric=key=>{closeSheet();const def=allDefs().find(x=>x.key===key)||{n
   const v=parseFloat(prompt('Log '+def.name+(def.unit?' ('+def.unit+')':'')+':',''));if(isNaN(v))return;
   S.metrics[key]=S.metrics[key]||[];S.metrics[key].push([today(),v]);save();renderProgress();toast(def.name+' logged');};
 window.metricDetail=key=>{
-  const def=key==='weight'?{key:'weight',name:'Weight',unit:'kg',hi:false}:allDefs().find(d=>d.key===key);
+  const def=key==='weight'?{key:'weight',name:'Weight',unit:'lbs',hi:false}:allDefs().find(d=>d.key===key);
   const raw=key==='weight'?S.weight:(S.metrics[key]||[]);const col=key==='weight'?'#2DD4BF':colorFor(key);
   const last=raw.length?raw[raw.length-1][1]:0,mx=raw.length?Math.max(...raw.map(x=>x[1])):0;
   const v=raw.map(p=>p[1]),mn=Math.min(...v),mxx=Math.max(...v),r=(mxx-mn)||1,W=300,H=120;
@@ -976,7 +1028,7 @@ window.renderPhotos=()=>{const box=document.getElementById('vaultPhotos');if(!bo
       <div class="pbadge">${p.bf!=null?p.bf+'%':'<span style="color:#BEF264">est</span>'}</div>${p.pose?`<div class="ppose">${p.pose}</div>`:''}<div class="pdate">${p.day.slice(5)}</div></div>`).join('')}</div>`
       :'<div class="muted sm" style="padding:10px 2px">No photos here yet — add front/side/back shots and let AI estimate body fat.</div>'}
     <div class="row" style="gap:10px;margin-top:12px">
-      <button class="ghost" onclick="addVaultPhoto()"><i class="ti ti-camera-plus"></i> Add photo</button>
+      <button class="btn" onclick="addVaultPhoto()" style="margin-top:4px"><i class="ti ti-camera-plus"></i> Log photo</button>
       <button class="ghost" onclick="estimateAllPhotos()"><i class="ti ti-sparkles"></i> Estimate all</button></div>
     <button class="ghost" style="margin-top:8px" onclick="openCompare()"><i class="ti ti-arrows-left-right"></i> Before / after</button>
     <div class="muted sm" style="margin-top:8px">AI body-fat from a photo is a rough visual estimate — pair it with the Navy method and the scale.</div>`;};
