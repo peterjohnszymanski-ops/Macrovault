@@ -683,32 +683,34 @@ window.doBF=()=>{
 };
 
 // ---- Barcode scanner (live camera) ----
+function loadScript(src){return new Promise((res,rej)=>{
+  if([...document.scripts].some(s=>s.src===src))return res();
+  const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.append(s);});}
+function manualBarcode(){const c=prompt('Enter the barcode number to look up:');if(c&&c.trim())lookupBarcode(c.trim());}
+// Camera barcode scanning that works in any browser incl. iPhone Safari
+// (html5-qrcode uses getUserMedia + an in-browser decoder; needs HTTPS, which
+// the deployed site has).
 window.scanBarcode=async()=>{
-  if(!('BarcodeDetector' in window)){
-    const c=prompt('Live scanning needs Chrome or Edge. Enter a barcode number to look up:');
-    if(c)lookupBarcode(c.trim());
-    return;
-  }
-  let stream;
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});}
-  catch(e){toast('Camera blocked — allow access');return;}
+  try{await loadScript('https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js');}
+  catch(e){return manualBarcode();}
+  if(typeof Html5Qrcode==='undefined')return manualBarcode();
   const wrap=document.createElement('div');
-  wrap.style.cssText='position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px';
-  const v=document.createElement('video');v.autoplay=true;v.playsInline=true;v.muted=true;v.srcObject=stream;
-  v.style.cssText='max-width:94%;max-height:74%;border-radius:16px';
-  const cap=document.createElement('div');cap.textContent='Point at a product barcode';cap.style.cssText='color:#fff;font-size:15px';
-  const x=document.createElement('button');x.textContent='Cancel';x.className='ghost';x.style.cssText='max-width:200px;color:#fff';
-  wrap.append(v,cap,x);document.body.append(wrap);
-  const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
-  let done=false;
-  const stop=()=>{done=true;stream.getTracks().forEach(t=>t.stop());wrap.remove();};
-  x.onclick=stop;
-  const loop=async()=>{
-    if(done)return;
-    try{const codes=await det.detect(v);if(codes&&codes.length){const code=codes[0].rawValue;stop();lookupBarcode(code);return;}}catch(e){}
-    requestAnimationFrame(loop);
-  };
-  v.onloadedmetadata=loop;
+  wrap.style.cssText='position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px';
+  wrap.innerHTML=`<div id="scanview" style="width:100%;max-width:340px;border-radius:16px;overflow:hidden;background:#111"></div>
+    <div style="color:#fff;font-size:15px">Point at a product barcode</div>
+    <button id="scanType" class="ghost" style="max-width:240px;color:#fff">Type the number instead</button>
+    <button id="scanX" class="ghost" style="max-width:240px;color:#fff">Cancel</button>`;
+  document.body.append(wrap);
+  const F=Html5QrcodeSupportedFormats;
+  const scanner=new Html5Qrcode('scanview',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128],verbose:false});
+  let stopped=false;
+  const cleanup=async()=>{if(stopped)return;stopped=true;try{await scanner.stop();}catch(e){}try{scanner.clear();}catch(e){}wrap.remove();};
+  document.getElementById('scanX').onclick=cleanup;
+  document.getElementById('scanType').onclick=async()=>{await cleanup();manualBarcode();};
+  try{
+    await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:160}},
+      async(text)=>{await cleanup();lookupBarcode(String(text).trim());},()=>{});
+  }catch(e){await cleanup();toast('Camera blocked — allow it in Safari, then retry');manualBarcode();}
 };
 async function lookupBarcode(code){
   toast('Looking up '+code+'…');
