@@ -18,15 +18,22 @@
     --bg:#0E1217; --surf:#161C24; --surfH:#1C2530; --accent:#BEF264; --ink:#0E1217;
     --pro:#2DD4BF; --carb:#F6B73C; --fat:#A78BFA; --water:#38BDF8;
     --text:#E7ECEF; --muted:#8A949C; --coral:#F6735A;
+    --hdr-bg:#0E1217; --hdr-border:transparent;
+  }
+  html[data-theme="light"]{
+    --bg:#F4F6F8; --surf:#FFFFFF; --surfH:#E8EDF2; --accent:#22C55E; --ink:#FFFFFF;
+    --text:#0D1117; --muted:#6B7280; --coral:#EF4444;
+    --hdr-bg:#FFFFFF; --hdr-border:#E5E7EB;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  body{margin:0; background:#05080b; color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
   .phone{max-width:430px; margin:0 auto; min-height:100vh; background:var(--bg);
     display:flex; flex-direction:column; position:relative;}
-  header{display:flex; justify-content:space-between; align-items:center; padding:16px 18px 8px;}
+  header{display:flex; justify-content:space-between; align-items:center; padding:16px 18px 8px; background:var(--hdr-bg); border-bottom:.5px solid var(--hdr-border);}
   header .t{font-size:18px; font-weight:700;}
   header .d{color:var(--muted); font-size:13px;}
+  .theme-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;font-size:20px;line-height:0;border-radius:10px;}
   main{flex:1; overflow:auto; padding:8px 16px 96px;}
   .card{background:var(--surf); border-radius:20px; padding:16px; margin-bottom:14px;}
   .row{display:flex; align-items:center;}
@@ -38,13 +45,13 @@
   .meal:active{transform:scale(.97);}
   .meal .k{font-weight:800; font-size:18px;}
   .qa{display:flex; gap:10px; margin:6px 0 4px;}
-  .qa button{flex:1; background:var(--surf); border:none; color:#C9D2D8; border-radius:16px;
+  .qa button{flex:1; background:var(--surf); border:none; color:var(--text); border-radius:16px;
     padding:12px 4px; font-size:11px; cursor:pointer;}
   .qa button.primary{background:var(--accent); color:var(--ink); font-weight:700;}
   .qa button i{font-size:18px; display:block; margin-bottom:3px;}
   .tabbar{position:sticky; bottom:0; display:flex; background:var(--bg);
     border-top:.5px solid var(--surfH);}
-  .tabbar button{flex:1; background:none; border:none; color:#5C6670; padding:9px 0 11px;
+  .tabbar button{flex:1; background:none; border:none; color:var(--muted); padding:9px 0 11px;
     font-size:11px; cursor:pointer;}
   .tabbar button i{font-size:20px; display:block; margin-bottom:2px;}
   .tabbar button.on{color:var(--accent);}
@@ -133,6 +140,7 @@
   .pdate{position:absolute; bottom:6px; right:6px; background:rgba(0,0,0,.55); color:#fff; font-size:10px; padding:1px 6px; border-radius:7px;}
   .ppose{position:absolute; bottom:6px; left:6px; background:rgba(0,0,0,.55); color:#fff; font-size:10px; padding:1px 6px; border-radius:7px; text-transform:capitalize;}
 </style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/dist/tabler-icons.min.css" rel="stylesheet">
 </head>
 <body>
@@ -142,7 +150,10 @@
       <button id="backBtn" onclick="goBack()" style="display:none;background:none;border:none;color:var(--accent);cursor:pointer;padding:6px 10px 6px 0;font-size:22px;line-height:0"><i class="ti ti-arrow-left"></i></button>
       <div><div class="t" id="hTitle">MacroVault</div><div class="d" id="hSub"></div></div>
     </div>
-    <div style="width:34px;height:34px;border-radius:50%;background:var(--surfH);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--accent)">P</div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark"><i class="ti ti-sun" id="themeIcon"></i></button>
+      <div style="width:34px;height:34px;border-radius:50%;background:var(--surfH);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--accent)">P</div>
+    </div>
   </header>
   <main>
     <div id="view-today"></div>
@@ -165,6 +176,15 @@
 <script>
 const C=2*Math.PI*52;
 const $=s=>document.querySelector(s);
+
+// Light / dark mode
+let _isDark = localStorage.getItem('mv_theme')!=='light';
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme',_isDark?'dark':'light');
+  const ic=$('#themeIcon');if(ic)ic.className=_isDark?'ti ti-sun':'ti ti-moon';
+}
+window.toggleTheme=()=>{_isDark=!_isDark;applyTheme();try{localStorage.setItem('mv_theme',_isDark?'dark':'light');}catch(e){}};
+applyTheme();
 const fmt=n=>Math.round(n).toLocaleString();
 // AI model — default to Haiku 4.5 (cheapest); user can pick a stronger one.
 const aiModel=()=>localStorage.getItem('aiModel')||'claude-haiku-4-5';
@@ -902,34 +922,31 @@ window.scanBarcode=async()=>{
   if(typeof Html5Qrcode==='undefined')return manualBarcode();
   const wrap=document.createElement('div');
   wrap.style.cssText='position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0';
+  const vH=Math.round(window.innerHeight*0.58);
+  const qW=Math.min(260,Math.round(window.innerWidth*0.65));
+  const qH=Math.round(qW*0.48);
   wrap.innerHTML=`
-    <div style="position:relative;width:100%;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden">
-      <div id="scanview" style="width:100%;height:100%;background:#111"></div>
-      <div style="position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center">
-        <div style="width:72%;max-width:280px;aspect-ratio:2/1;border:2.5px solid #BEF264;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)">
-          <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);margin-top:-28px;color:#BEF264;font-weight:700;font-size:13px;white-space:nowrap">HOVER OVER BARCODE</div>
-        </div>
-        <div id="scanPulse" style="margin-top:18px;color:#BEF264;font-size:13px;animation:scanBlink 1.2s ease-in-out infinite">Scanning…</div>
-      </div>
+    <div style="color:#BEF264;text-align:center;padding:18px 16px 10px;font-weight:700;font-size:13px;letter-spacing:1px">
+      HOVER OVER BARCODE — AUTO-DETECTS
     </div>
-    <div style="background:#111;width:100%;padding:16px 20px 32px;display:flex;flex-direction:column;gap:10px">
-      <button id="scanType" style="background:none;border:1.5px solid #5C6670;color:#C9D2D8;border-radius:14px;padding:13px;font-size:15px;cursor:pointer">Type barcode number instead</button>
-      <button id="scanX" style="background:#BEF264;border:none;color:#0E1217;border-radius:14px;padding:13px;font-size:15px;font-weight:700;cursor:pointer">Cancel</button>
+    <div id="scanview" style="width:100%;height:${vH}px;background:#000;overflow:hidden;position:relative"></div>
+    <div style="background:#111;width:100%;padding:16px 20px 36px;display:flex;flex-direction:column;gap:10px;margin-top:auto">
+      <div id="scanStatus" style="text-align:center;color:#BEF264;font-size:13px;padding-bottom:4px">Camera starting…</div>
+      <button id="scanType" style="background:none;border:1.5px solid #5C6670;color:#C9D2D8;border-radius:14px;padding:13px;font-size:15px;cursor:pointer;font-family:inherit">Type barcode number instead</button>
+      <button id="scanX" style="background:#BEF264;border:none;color:#0E1217;border-radius:14px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
     </div>`;
-  const style=document.createElement('style');
-  style.textContent='@keyframes scanBlink{0%,100%{opacity:.4}50%{opacity:1}}';
-  wrap.append(style);
   document.body.append(wrap);
-  const F=Html5QrcodeSupportedFormats;
-  const scanner=new Html5Qrcode('scanview',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128],verbose:false});
+  const scanner=new Html5Qrcode('scanview',{verbose:false});
   let stopped=false;
   const cleanup=async()=>{if(stopped)return;stopped=true;try{await scanner.stop();}catch(e){}try{scanner.clear();}catch(e){}wrap.remove();};
   document.getElementById('scanX').onclick=cleanup;
   document.getElementById('scanType').onclick=async()=>{await cleanup();manualBarcode();};
+  const setSt=t=>{const e=document.getElementById('scanStatus');if(e)e.textContent=t;};
   try{
-    await scanner.start({facingMode:'environment'},{fps:25,qrbox:{width:Math.round(window.innerWidth*.68),height:Math.round(window.innerWidth*.34)}},
-      async(text)=>{await cleanup();lookupBarcode(String(text).trim());},()=>{});
-  }catch(e){await cleanup();toast('Camera blocked — allow it in Safari, then retry');manualBarcode();}
+    await scanner.start({facingMode:'environment'},{fps:20,qrbox:{width:qW,height:qH}},
+      async(text)=>{setSt('✓ Found!');await cleanup();lookupBarcode(String(text).trim());},()=>{});
+    setSt('Scanning — point at any barcode');
+  }catch(e){await cleanup();toast('Camera error: '+(e.message||'allow camera in Settings then retry'));}
 };
 async function lookupBarcode(code){
   toast('Looking up '+code+'…');
