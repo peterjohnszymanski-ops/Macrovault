@@ -108,12 +108,24 @@
   .meal-tabs::-webkit-scrollbar{display:none;}
   .meal-tab{flex:0 0 auto;background:none;border:none;border-bottom:2.5px solid transparent;color:var(--muted);padding:12px 18px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:color .15s;}
   .meal-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
-  /* Food search rows — bigger/bolder */
-  .frow{display:flex;justify-content:space-between;align-items:center;padding:13px 4px;border-bottom:.5px solid var(--surfH);cursor:pointer;}
-  .frow-name{font-size:15px;font-weight:600;}
-  .frow-meta{font-size:12px;color:var(--muted);margin-top:2px;}
-  .frow-qadd{background:var(--accent);border:none;color:#0E1217;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .1s;}
-  .frow-qadd:active{transform:scale(.9);}
+  /* Food search rows — bigger/bolder, MyNetDiary-inspired */
+  .frow{display:flex;align-items:center;padding:14px 4px;border-bottom:.5px solid var(--surfH);cursor:pointer;transition:background .1s;}
+  .frow:active{background:var(--surfH);}
+  .frow-name{font-size:16px;font-weight:700;line-height:1.2;}
+  .frow-brand{font-size:13px;color:var(--muted);margin-top:2px;}
+  .frow-kcal{font-size:17px;font-weight:800;color:var(--accent);white-space:nowrap;}
+  .frow-serv{font-size:11px;color:var(--muted);text-align:right;margin-top:2px;}
+  .frow-qadd{background:var(--accent);border:none;color:#0E1217;width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:24px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:transform .1s;margin-left:10px;}
+  .frow-qadd:active{transform:scale(.88);}
+  /* Food add full page */
+  .food-search-bar{position:relative;margin-bottom:12px;}
+  .food-search-bar i{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;pointer-events:none;}
+  .food-search-bar input{padding-left:44px;}
+  .food-action-row{display:flex;gap:8px;margin-bottom:14px;}
+  .food-action-btn{flex:1;background:var(--surfH);border:none;color:var(--text);border-radius:16px;padding:12px 4px 10px;cursor:pointer;text-align:center;}
+  .food-action-btn i{font-size:22px;display:block;margin-bottom:4px;color:var(--accent);}
+  .food-action-btn span{font-size:11px;color:var(--muted);}
+  .food-section-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:14px 4px 6px;}
   .pgrid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
   .pcell{position:relative; aspect-ratio:3/4; border-radius:12px; overflow:hidden; background:var(--surfH); cursor:pointer;}
   .pcell img{width:100%; height:100%; object-fit:cover; display:block;}
@@ -127,7 +139,7 @@
 <div class="phone">
   <header>
     <div style="display:flex;align-items:center;gap:2px">
-      <button id="backBtn" onclick="closeMealsPage()" style="display:none;background:none;border:none;color:var(--accent);cursor:pointer;padding:6px 10px 6px 0;font-size:22px;line-height:0"><i class="ti ti-arrow-left"></i></button>
+      <button id="backBtn" onclick="goBack()" style="display:none;background:none;border:none;color:var(--accent);cursor:pointer;padding:6px 10px 6px 0;font-size:22px;line-height:0"><i class="ti ti-arrow-left"></i></button>
       <div><div class="t" id="hTitle">MacroVault</div><div class="d" id="hSub"></div></div>
     </div>
     <div style="width:34px;height:34px;border-radius:50%;background:var(--surfH);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--accent)">P</div>
@@ -135,6 +147,7 @@
   <main>
     <div id="view-today"></div>
     <div id="view-meals" style="display:none"></div>
+    <div id="view-addfood" style="display:none"></div>
     <div id="view-progress" style="display:none"></div>
     <div id="view-vault" style="display:none"></div>
     <div id="view-more" style="display:none"></div>
@@ -319,7 +332,7 @@ function insights(){const t=totals(),out=[],left=GOAL.cal-t.kcal,pGap=Math.round
 window.openDayFoodLog=()=>{
   const t=totals();
   const secs=SLOTS.map(([k,n])=>{const foods=S.meals[k];if(!foods.length)return '';
-    const rows=foods.map((x,i)=>`<div class="fitem" onclick="openMeal('${k}')">
+    const rows=foods.map((x,i)=>`<div class="fitem" onclick="openMealsPage('${k}')">
       <div style="flex:1;min-width:0"><div>${x.name}${x.brand?' · '+x.brand:''}</div>
       <div class="muted sm">${x.qty%1===0?x.qty:x.qty.toFixed(1)} × ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}</div></div>
       <i class="ti ti-chevron-right muted"></i></div>`).join('');
@@ -599,9 +612,87 @@ window.eqQtyDirect=v=>{const {k,i}=window._eq;const it=S.meals[k][i];const n=par
   const el=document.getElementById('eqKcal');if(el)el.textContent=fmt(it.kcal*n)+' kcal';}};
 
 let activeSlot='snack';
-let DISPLAY=[];        // foods currently shown in the sheet, indexed for logging
-let searchSeq=0;       // guards against out-of-order async results
-window.addFood=k=>{activeSlot=k;renderAddSheet('');};
+let DISPLAY=[];
+let searchSeq=0;
+let _inFoodPage=false, _foodPageFrom='today';
+
+function goBack(){
+  if(_inFoodPage)closeFoodPage();
+  else if(_inMealsView)closeMealsPage();
+}
+
+window.addFood=k=>{activeSlot=k;openFoodPage(k);};
+
+window.openFoodPage=k=>{
+  _inFoodPage=true; activeSlot=k;
+  _foodPageFrom=_inMealsView?'meals':'today';
+  ['today','meals','progress','vault','more'].forEach(v=>$('#view-'+v).style.display='none');
+  $('#view-addfood').style.display='block';
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('on'));
+  $('#backBtn').style.display='flex';
+  $('#hTitle').textContent='Add food';
+  renderFoodPage('');
+  setTimeout(()=>{const e=document.getElementById('foodQ');if(e){e.focus();}},120);};
+
+window.closeFoodPage=()=>{
+  _inFoodPage=false;
+  $('#view-addfood').style.display='none';
+  $('#backBtn').style.display='none';
+  if(_foodPageFrom==='meals'){
+    _inMealsView=true;
+    $('#view-meals').style.display='block';
+    $('#hTitle').textContent='Diary';
+    $('#backBtn').style.display='flex';
+    renderMealsPage(activeSlot);
+  }else{
+    $('#view-today').style.display='block';
+    $('#hTitle').textContent='MacroVault';
+    document.querySelector('.tabbar button[data-tab="today"]').classList.add('on');
+    renderToday();
+  }};
+
+function renderFoodPage(q){
+  DISPLAY=[];
+  const slotName=SLOTS.find(s=>s[0]===activeSlot)[1];
+  const tabs=SLOTS.map(([k,n])=>`<button class="meal-tab ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';$('#hTitle').textContent='Add food';renderFoodPage(document.getElementById('foodQ')?.value||'')">${n}</button>`).join('');
+  let list;
+  if(q.trim()){
+    const r=DB.map(G).filter(f=>f.name.toLowerCase().includes(q.toLowerCase())||(f.brand||'').toLowerCase().includes(q.toLowerCase()));
+    list=`<div class="food-section-lbl">Your foods</div>`+(r.map(rowHtml).join('')||'<div class="muted sm" style="padding:8px 4px">No matches</div>');
+  }else{
+    const rec=recents();
+    list=(rec.length?`<div class="food-section-lbl">Recent & favorites</div>`+rec.map(rowHtml).join(''):'')
+      +`<div class="food-section-lbl">All foods</div>`+DB.map(G).map(rowHtml).join('');
+  }
+  $('#view-addfood').innerHTML=`
+    <div class="meal-tabs">${tabs}</div>
+    <div style="padding:14px 16px 100px">
+      <div class="food-search-bar">
+        <i class="ti ti-search"></i>
+        <input id="foodQ" class="in" placeholder="Search Oikos, protein powder, a brand…" value="${q.replace(/"/g,'&quot;')}" oninput="renderFoodPage(this.value)">
+      </div>
+      <div class="food-action-row">
+        <button class="food-action-btn" onclick="scanBarcode()"><i class="ti ti-barcode"></i><span>Scan barcode</span></button>
+        <button class="food-action-btn" onclick="snapFood()"><i class="ti ti-camera"></i><span>Snap food</span></button>
+        <button class="food-action-btn" onclick="quickAdd()"><i class="ti ti-bolt"></i><span>Quick cal</span></button>
+      </div>
+      <div id="foodList">${list}</div>
+      <div id="offBox3" style="margin-top:4px"></div>
+    </div>`;
+  const qi=document.getElementById('foodQ');
+  if(qi&&q){qi.setSelectionRange(q.length,q.length);}
+  if(q.trim().length>=2){
+    const seq=++searchSeq;
+    const box=document.getElementById('offBox3');
+    if(box)box.innerHTML='<div class="muted sm" style="padding:8px 4px">Searching food databases…</div>';
+    offSearch(q.trim()).then(res=>{
+      if(seq!==searchSeq)return;
+      const b=document.getElementById('offBox3');if(!b)return;
+      if(!res.length){b.innerHTML='<div class="muted sm" style="padding:8px 4px">No branded matches online.</div>';return;}
+      b.innerHTML=`<div class="food-section-lbl">Branded — Open Food Facts</div>`+res.map(rowHtml).join('');
+    });
+  }
+}
 
 function recents(){return Object.values(S.usage)
   .sort((a,b)=>(b.fav-a.fav)||(b.last-a.last)).map(u=>u.f);}
@@ -609,10 +700,15 @@ function recents(){return Object.values(S.usage)
 function rowHtml(f){
   const i=DISPLAY.push(f)-1;
   const fav=(S.usage[fkey(f)]||{}).fav;
+  const brand=f.brand||'';
   return `<div class="frow" onclick="portion(${i})">
-    <div style="flex:1;min-width:0;padding-right:10px">
-      <div class="frow-name">${fav?'<i class="ti ti-star star"></i> ':''}${dispName(f)}</div>
-      <div class="frow-meta">${f.kcal} kcal · ${f.serv}${f.off?' · <span style="color:#5C6670">database</span>':''}</div>
+    <div style="flex:1;min-width:0;padding-right:8px">
+      <div class="frow-name">${fav?'<i class="ti ti-star" style="color:#F6B73C;font-size:13px"></i> ':''}${f.name}</div>
+      ${brand||f.off?`<div class="frow-brand">${brand||''}${f.off?'<span style="color:#5C6670"> · database</span>':''}</div>`:''}
+    </div>
+    <div style="text-align:right;flex-shrink:0;margin-right:8px">
+      <div class="frow-kcal">${f.kcal}</div>
+      <div class="frow-serv">${f.serv}</div>
     </div>
     <button class="frow-qadd" onclick="event.stopPropagation();logIdx(${i})" title="Quick add">+</button>
   </div>`;
@@ -645,42 +741,22 @@ window.portQty=d=>{const inp=document.getElementById('portInput');const cur=inp?
 window.portQtyDirect=v=>{const n=parseFloat(v);if(!isNaN(n)&&n>0){window._port.qty=n;const f=window._port.f;
   const upd=(id,val)=>{const e=document.getElementById(id);if(e)e.textContent=val;};
   upd('portKcal',Math.round(f.kcal*n));upd('portProt',Math.round(f.p*n)+'g');upd('portCarb',Math.round(f.c*n)+'g');upd('portFat',Math.round(f.f*n)+'g');save();}};
-function afterLog(){closeSheet();if(_inMealsView){renderMealsPage(activeSlot);}renderToday();}
+function afterLog(){
+  if(_inFoodPage){
+    // Stay on food page so user can keep adding — just refresh list and update today in background
+    renderFoodPage(document.getElementById('foodQ')?.value||'');
+    renderToday();
+  }else{
+    closeSheet();
+    if(_inMealsView){renderMealsPage(activeSlot);}
+    renderToday();
+  }
+}
 window.portAdd=()=>{const {f,qty}=window._port;
   S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty,m:f.m||{}});
   const k=fkey(f);S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};S.usage[k].f=f;S.usage[k].count++;S.usage[k].last=Date.now();
   save();afterLog();toast('Logged '+(qty%1===0?qty:qty.toFixed(1))+'× '+f.name);};
 
-function renderAddSheet(q){
-  DISPLAY=[];
-  const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderAddSheet(document.getElementById('q').value)">${n}</button>`).join('');
-  let list;
-  if(q.trim()){
-    const r=DB.map(G).filter(f=>f.name.toLowerCase().includes(q.toLowerCase()));
-    list='<div class="muted sm" style="margin:6px 2px">Your foods</div>'+
-      (r.map(rowHtml).join('')||'<div class="muted sm" style="padding:6px 2px">None saved yet</div>');
-  }else{
-    const rec=recents();
-    list=(rec.length?'<div class="muted sm" style="margin:6px 2px">Recent & favorites — tap to log again</div>'+rec.map(rowHtml).join(''):'')
-      +'<div class="muted sm" style="margin:10px 2px">Starter foods</div>'+DB.map(G).map(rowHtml).join('');
-  }
-  openSheet(`<h3>Add food</h3><div>${chips}</div>
-    <input id="q" class="in" placeholder="Search Oikos, protein powder, a brand…" value="${q.replace(/"/g,'&quot;')}" oninput="renderAddSheet(this.value)" autofocus style="margin:8px 0 4px">
-    <div style="max-height:46vh;overflow:auto">${list}<div id="offBox"></div></div>
-    <button class="ghost" style="margin-top:10px" onclick="quickAdd()"><i class="ti ti-bolt"></i> Quick add calories</button>`);
-  const qi=document.getElementById('q');if(qi){qi.focus();qi.setSelectionRange(q.length,q.length);}
-  if(q.trim().length>=2){
-    const seq=++searchSeq;
-    const box=document.getElementById('offBox');
-    box.innerHTML='<div class="muted sm" style="padding:10px 2px">Searching food databases…</div>';
-    offSearch(q.trim()).then(res=>{
-      if(seq!==searchSeq)return;
-      const b=document.getElementById('offBox'); if(!b)return;
-      if(!res.length){b.innerHTML='<div class="muted sm" style="padding:10px 2px">No branded matches online.</div>';return;}
-      b.innerHTML='<div class="muted sm" style="margin:10px 2px">Branded — Open Food Facts</div>'+res.map(rowHtml).join('');
-    });
-  }
-}
 
 window.logIdx=i=>{
   const f=DISPLAY[i]; if(!f)return;
@@ -825,11 +901,24 @@ window.scanBarcode=async()=>{
   catch(e){return manualBarcode();}
   if(typeof Html5Qrcode==='undefined')return manualBarcode();
   const wrap=document.createElement('div');
-  wrap.style.cssText='position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px';
-  wrap.innerHTML=`<div id="scanview" style="width:100%;max-width:340px;border-radius:16px;overflow:hidden;background:#111"></div>
-    <div style="color:#fff;font-size:15px">Point at a product barcode</div>
-    <button id="scanType" class="ghost" style="max-width:240px;color:#fff">Type the number instead</button>
-    <button id="scanX" class="ghost" style="max-width:240px;color:#fff">Cancel</button>`;
+  wrap.style.cssText='position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0';
+  wrap.innerHTML=`
+    <div style="position:relative;width:100%;flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden">
+      <div id="scanview" style="width:100%;height:100%;background:#111"></div>
+      <div style="position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div style="width:72%;max-width:280px;aspect-ratio:2/1;border:2.5px solid #BEF264;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)">
+          <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);margin-top:-28px;color:#BEF264;font-weight:700;font-size:13px;white-space:nowrap">HOVER OVER BARCODE</div>
+        </div>
+        <div id="scanPulse" style="margin-top:18px;color:#BEF264;font-size:13px;animation:scanBlink 1.2s ease-in-out infinite">Scanning…</div>
+      </div>
+    </div>
+    <div style="background:#111;width:100%;padding:16px 20px 32px;display:flex;flex-direction:column;gap:10px">
+      <button id="scanType" style="background:none;border:1.5px solid #5C6670;color:#C9D2D8;border-radius:14px;padding:13px;font-size:15px;cursor:pointer">Type barcode number instead</button>
+      <button id="scanX" style="background:#BEF264;border:none;color:#0E1217;border-radius:14px;padding:13px;font-size:15px;font-weight:700;cursor:pointer">Cancel</button>
+    </div>`;
+  const style=document.createElement('style');
+  style.textContent='@keyframes scanBlink{0%,100%{opacity:.4}50%{opacity:1}}';
+  wrap.append(style);
   document.body.append(wrap);
   const F=Html5QrcodeSupportedFormats;
   const scanner=new Html5Qrcode('scanview',{formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128],verbose:false});
@@ -838,7 +927,7 @@ window.scanBarcode=async()=>{
   document.getElementById('scanX').onclick=cleanup;
   document.getElementById('scanType').onclick=async()=>{await cleanup();manualBarcode();};
   try{
-    await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:160}},
+    await scanner.start({facingMode:'environment'},{fps:25,qrbox:{width:Math.round(window.innerWidth*.68),height:Math.round(window.innerWidth*.34)}},
       async(text)=>{await cleanup();lookupBarcode(String(text).trim());},()=>{});
   }catch(e){await cleanup();toast('Camera blocked — allow it in Safari, then retry');manualBarcode();}
 };
@@ -1188,10 +1277,10 @@ function renderAll(){renderToday();renderProgress();renderVault();renderMore();}
 function animateToday(){const el=$('#view-today');el.classList.remove('anim');void el.offsetWidth;el.classList.add('anim');}
 document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{
   const tab=b.dataset.tab;
-  _inMealsView=false;
+  _inMealsView=false; _inFoodPage=false;
   $('#backBtn').style.display='none';
   document.querySelectorAll('.tabbar button').forEach(x=>x.classList.toggle('on',x===b));
-  ['today','meals','progress','vault','more'].forEach(v=>$('#view-'+v).style.display=v===tab?'block':'none');
+  ['today','meals','addfood','progress','vault','more'].forEach(v=>$('#view-'+v).style.display=v===tab?'block':'none');
   $('#hTitle').textContent={today:'MacroVault',progress:'Progress',vault:'Vault',more:'More'}[tab];
   if(tab==='today')animateToday();
 });
