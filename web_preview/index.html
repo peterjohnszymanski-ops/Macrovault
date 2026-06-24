@@ -1766,6 +1766,36 @@ function renderVault(){
   $('#view-vault').innerHTML=`
     <div class="row" style="justify-content:space-between;margin:4px 2px 12px"><h3 style="margin:0">Progress Vault</h3>
       <i class="ti ti-${S.lock.enabled?'lock':'lock-open'} muted" style="cursor:pointer;font-size:18px" onclick="${S.lock.enabled?'lockVaultNow()':'setupVaultLock()'}"></i></div>
+    ${(()=>{
+      const wt=S.weight.length?S.weight[S.weight.length-1][1]:null;
+      const ht=S.meas.height||null;const bf=S.metrics.bodyfat?.slice(-1)?.[0]?.[1]||null;
+      if(!wt||!ht)return`<div class="card fade" style="margin-bottom:14px;cursor:pointer" onclick="openGoalSettings()">
+        <div class="muted sm">Log your weight and height in Goals to see body composition stats.</div></div>`;
+      const kg=wt*0.453592;const hm=ht/100;const bmi=kg/(hm*hm);
+      const bmiCat=bmi<18.5?'Underweight':bmi<25?'Normal':bmi<30?'Overweight':'Obese';
+      const bmiCol=bmi<18.5?'#38BDF8':bmi<25?'#BEF264':bmi<30?'#F6B73C':'#F6735A';
+      let ffmiStr='';
+      if(bf!=null){const lbm=kg*(1-bf/100);const ffmi=lbm/(hm*hm);
+        const ffmiCat=ffmi<18?'Beginner':ffmi<20?'Intermediate':ffmi<22?'Advanced':ffmi<24?'Elite':'Exceptional';
+        ffmiStr=`<div style="text-align:center;flex:1;padding:10px;background:var(--surfH);border-radius:12px">
+          <div style="font-size:22px;font-weight:800;color:#2DD4BF">${ffmi.toFixed(1)}</div>
+          <div style="font-size:10px;color:var(--muted)">FFMI</div>
+          <div style="font-size:11px;font-weight:600;color:#2DD4BF">${ffmiCat}</div></div>`;}
+      const allLogDays=Object.values(S.history||{}).filter(h=>h.logged).length;
+      const totalFoods=SLOTS.flatMap(([k])=>S.meals[k]).length+Object.values(S.history||{}).reduce((s,h)=>s+Object.values(h._meals||{}).flat().length,0);
+      return`<div class="card fade" style="margin-bottom:14px">
+        <h3 style="margin:0 0 10px">Body composition</h3>
+        <div class="row" style="gap:8px">
+          <div style="text-align:center;flex:1;padding:10px;background:var(--surfH);border-radius:12px">
+            <div style="font-size:22px;font-weight:800;color:${bmiCol}">${bmi.toFixed(1)}</div>
+            <div style="font-size:10px;color:var(--muted)">BMI</div>
+            <div style="font-size:11px;font-weight:600;color:${bmiCol}">${bmiCat}</div></div>
+          ${ffmiStr}
+          <div style="text-align:center;flex:1;padding:10px;background:var(--surfH);border-radius:12px">
+            <div style="font-size:22px;font-weight:800;color:#A78BFA">${allLogDays}</div>
+            <div style="font-size:10px;color:var(--muted)">Days logged</div>
+            <div style="font-size:11px;font-weight:600;color:#A78BFA">${streak()} day streak</div></div>
+        </div></div>`;})()}
     ${ms.length?`<div class="hscroll" style="margin-bottom:14px">${ms.map(m=>`<div class="qchip" style="min-width:auto;display:flex;align-items:center;gap:8px"><i class="ti ti-${m.i}" style="color:${m.c};font-size:18px"></i><span style="font-weight:600;white-space:nowrap">${m.t}</span></div>`).join('')}</div>`:''}
     <button class="btn" style="margin-bottom:12px" onclick="generateReview()"><i class="ti ti-sparkles"></i> Generate weekly review</button>
     <div id="vaultPhotos" style="margin-bottom:18px"></div>
