@@ -703,6 +703,30 @@ function renderToday(){
             <div class="muted sm">${dp.days} days of data · ~${(Math.abs(dp.lbsPerWeek)*4.33).toFixed(1)} lbs/month</div>
           </div></div>${etaStr}</div>`;})()}
 
+    ${(()=>{
+      const mealP=SLOTS.map(([k,n])=>{const foods=isToday?S.meals[k]:(histMeals[k]||[]);
+        const p=foods.reduce((s,x)=>s+(x.p||0)*x.qty,0);return{k,n,p,foods:foods.length};});
+      const totalP=mealP.reduce((s,x)=>s+x.p,0);
+      if(totalP<10)return'';
+      const bars=mealP.map(m=>{const pct=Math.round(m.p/totalP*100);const w=Math.max(2,pct);
+        const col=m.p>=(GOAL.p/SLOTS.length)?'#2DD4BF':'#5C6670';
+        return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted)">${Math.round(m.p)}g</div>
+          <div style="width:100%;height:40px;display:flex;align-items:flex-end">
+            <div style="width:100%;height:${w}%;background:${col};border-radius:4px 4px 0 0;min-height:4px"></div></div>
+          <div style="font-size:9px;color:var(--muted);text-align:center;line-height:1.2">${SLOT_META[m.k]?.[0]||''}${m.n.split(' ')[0]}</div>
+        </div>`;}).join('');
+      const evenThreshold=totalP/SLOTS.length;const maxMeal=Math.max(...mealP.map(m=>m.p));
+      const tip=maxMeal>totalP*0.6?`💡 Spread protein more evenly — most is in one meal`
+        :mealP[0].p<10&&totalP>40?`💡 Add protein at breakfast to boost muscle synthesis`
+        :`✓ Protein well distributed across meals`;
+      return`<div class="card fade" style="margin-bottom:14px">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <h3 style="margin:0">Protein timing</h3>
+          <span style="font-size:12px;color:#2DD4BF;font-weight:700">${Math.round(totalP)}g total</span></div>
+        <div style="display:flex;gap:6px;height:70px">${bars}</div>
+        <div class="muted sm" style="margin-top:8px">${tip}</div></div>`;})()}
+
     <div class="card fade">
       <div class="row" style="justify-content:space-between;margin-bottom:10px">
         <h3 style="margin:0">Nutrition</h3>
@@ -1905,6 +1929,7 @@ function renderMore(){
     ${row('❤️','Vitals',S.vitals?.length?'Last: '+(S.vitals.slice(-1)[0]?.sys||'—')+'/'+(S.vitals.slice(-1)[0]?.dia||'—')+' mmHg':'Blood pressure & heart rate','openVitals()')}
     ${row('🏃','Activity calculator','Calculate calories burned for any exercise','openActivityCalc()')}
     ${row('⚡','Goal presets','Cutting · Bulking · Maintenance · High protein','openGoalPresets()')}
+    ${row('🔔','Reminders',localStorage.getItem('mv_reminders')?'Meal & water reminders on':'Set meal & water reminders','openReminders()')}
     ${row('🧑‍⚕️','Nutrition coach chat','Ask AI about your food, macros, and goals','openNutriChat()')}
     ${row('⏱️','Intermittent fasting',S.fasting?.startTs?'Fast in progress — tap to manage':'Set up a fasting window (16:8, 18:6…)','openFasting()')}
     ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
@@ -2216,6 +2241,43 @@ window.saveVitals=()=>{
   if(!sys||!dia){toast('Enter systolic and diastolic');return;}
   const hr=parseInt(document.getElementById('vHr')?.value||'0')||null;
   S.vitals.push({date:today(),sys,dia,hr});save();openVitals();toast('Vitals logged');haptic(10);};
+
+// ---- Meal & water reminders ----
+window.openReminders=async()=>{
+  const perm=Notification.permission;
+  const rem=JSON.parse(localStorage.getItem('mv_reminders')||'{}');
+  const permBadge=perm==='granted'?`<span style="color:#BEF264;font-size:11px">✓ Notifications allowed</span>`
+    :perm==='denied'?`<span style="color:#F6735A;font-size:11px">Notifications blocked – enable in Safari Settings</span>`
+    :`<button class="ghost" style="padding:4px 12px;font-size:12px;width:auto" onclick="Notification.requestPermission().then(()=>openReminders())">Allow notifications</button>`;
+  openSheet(`<h3>🔔 Reminders</h3>
+    <div class="row" style="margin-bottom:14px">${permBadge}</div>
+    ${[['breakfast','Breakfast','8:00'],['lunch','Lunch','12:30'],['dinner','Dinner','18:30'],['water','Water (every 2h)','10:00']].map(([k,label,def])=>`
+    <div class="row" style="margin-bottom:10px">
+      <div style="flex:1">
+        <div style="font-weight:600">${label}</div>
+        <input type="time" id="rem_${k}" value="${rem[k]||def}" class="in" style="width:110px;margin-top:4px"></div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="remOn_${k}" ${rem[k+'_on']?'checked':''} style="width:18px;height:18px">
+        On</label>
+    </div>`).join('')}
+    <button class="btn" onclick="saveReminders()">Save reminders</button>`);};
+window.saveReminders=()=>{
+  const keys=['breakfast','lunch','dinner','water'];
+  const rem={};
+  keys.forEach(k=>{rem[k]=document.getElementById('rem_'+k)?.value||'';rem[k+'_on']=document.getElementById('remOn_'+k)?.checked||false;});
+  localStorage.setItem('mv_reminders',JSON.stringify(rem));
+  scheduleReminders(rem);closeSheet();renderMore();toast('Reminders saved');};
+function scheduleReminders(rem){
+  if(Notification.permission!=='granted')return;
+  ['breakfast','lunch','dinner','water'].forEach(k=>{
+    if(!rem[k+'_on']||!rem[k])return;
+    const [h,m]=rem[k].split(':').map(Number);const now=new Date();
+    const fire=new Date(now.getFullYear(),now.getMonth(),now.getDate(),h,m,0);
+    if(fire<=now)fire.setDate(fire.getDate()+1);
+    const ms=fire-now;
+    setTimeout(()=>new Notification('MacroVault',{body:k==='water'?'Time to drink a glass of water 💧':`Time to log ${k}! 🍽️`,icon:'./icon-180.png'}),ms);});}
+// Auto-schedule on load
+(()=>{try{const rem=JSON.parse(localStorage.getItem('mv_reminders')||'{}');scheduleReminders(rem);}catch(e){}})();
 
 // ---- Copy meal to another slot ----
 window.copyMealTo=fromKey=>{
