@@ -191,6 +191,9 @@ const aiModel=()=>localStorage.getItem('aiModel')||'claude-haiku-4-5';
 const today=()=> new Date().toISOString().slice(0,10);
 const dayKey=off=>{const d=new Date();d.setDate(d.getDate()+off);return d.toISOString().slice(0,10);};
 const dayShort=off=>['S','M','T','W','T','F','S'][new Date(Date.now()+off*864e5).getDay()];
+let _viewDay=0; // 0=today, -1=yesterday, etc.
+const viewDate=()=>{const d=new Date();d.setDate(d.getDate()+_viewDay);return d.toISOString().slice(0,10);};
+const isViewingToday=()=>_viewDay===0;
 const greeting=()=>{const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening';};
 const currentSlot=()=>{const h=new Date().getHours();return h<11?'breakfast':h<16?'lunch':h<21?'dinner':'snack';};
 
@@ -354,7 +357,7 @@ function log1(state,slot,name){const f=G(DB.find(d=>d[0]===name));
 function totals(){let t={kcal:0,p:0,c:0,f:0};for(const s in S.meals)S.meals[s].forEach(x=>{t.kcal+=x.kcal*x.qty;t.p+=x.p*x.qty;t.c+=x.c*x.qty;t.f+=x.f*x.qty;});return t;}
 function mealKcal(s){return S.meals[s].reduce((a,x)=>a+x.kcal*x.qty,0);}
 
-function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1400);}
+function toast(m){haptic(8);const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1400);}
 function openSheet(html){$('#sheet').innerHTML='<div class="grab" onclick="closeSheet()" style="cursor:pointer;width:100%;margin-bottom:4px"></div>'+html;$('#sheetBg').classList.add('show');}
 function closeSheet(){$('#sheetBg').classList.remove('show');}
 $('#sheetBg').addEventListener('click',e=>{if(e.target.id==='sheetBg')closeSheet();});
@@ -574,17 +577,31 @@ function renderToday(){
             <button class="diary-del" onclick="event.stopPropagation();delItem('${k}',${i})"><i class="ti ti-x"></i></button>
           </div>`).join('');
         const meta=SLOT_META[k]||{emoji:'🍽️',color:'#BEF264'};
-        return `<div class="diary-meal-hdr">
-          <div onclick="openFoodPage('${k}')" style="cursor:pointer;flex:1;display:flex;align-items:center;gap:8px">
-            <span style="font-size:18px">${meta.emoji}</span>
-            <div>
-              <span class="diary-meal-name" style="color:${meta.color}">${n}</span>
-              ${kc?`<span class="diary-meal-kcal">${fmt(kc)} kcal</span>`:'<span class="diary-meal-kcal">tap to add food</span>'}
+        const mealP=Math.round(foods.reduce((s,x)=>s+x.p*x.qty,0));
+        const perMealPTarget=Math.round(GOAL.p/4);
+        const pPct=Math.min(100,mealP/perMealPTarget*100);
+        return `<div class="diary-meal-hdr" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;align-items:center">
+            <div onclick="openFoodPage('${k}')" style="cursor:pointer;flex:1;display:flex;align-items:center;gap:8px">
+              <span style="font-size:18px">${meta.emoji}</span>
+              <div>
+                <span class="diary-meal-name" style="color:${meta.color}">${n}</span>
+                ${kc?`<span class="diary-meal-kcal">${fmt(kc)} kcal</span>`:'<span class="diary-meal-kcal">tap to add food</span>'}
+              </div>
             </div>
+            <button class="diary-add" onclick="addFood('${k}')" style="border-color:${meta.color}22;color:${meta.color}"><i class="ti ti-plus"></i></button>
           </div>
-          <button class="diary-add" onclick="addFood('${k}')" style="border-color:${meta.color}22;color:${meta.color}"><i class="ti ti-plus"></i></button>
+          ${mealP>0?`<div style="margin-top:4px"><div class="row" style="justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px"><span>P: ${mealP}g</span><span>/${perMealPTarget}g target</span></div><div class="bar" style="height:4px"><i style="width:${pPct}%;background:#2DD4BF"></i></div></div>`:''}
         </div>${foodRows}`;}).join('')}
     </div>
+
+    ${(()=>{const a=achievements();return a.length?`<div class="fade" style="margin-bottom:14px">
+      <div class="muted sm" style="margin-bottom:8px;padding-left:2px">🏆 Achievements</div>
+      <div class="hscroll">${a.map(x=>`<div class="qchip" style="min-width:auto;display:flex;align-items:center;gap:6px;padding:8px 12px;border-color:${x.c}33">
+        <span style="font-size:18px">${x.e}</span><span style="font-size:12px;font-weight:700;color:${x.c};white-space:nowrap">${x.t}</span>
+      </div>`).join('')}</div></div>`:'';})()}
+
+    ${mealTimeline()}
 
     <div class="card fade" style="margin-top:14px">
       <h3 style="margin:0 0 2px">Insights</h3>${ins}</div>
@@ -1563,6 +1580,48 @@ function renderMore(){
         <div style="flex:1"><div style="font-weight:600">Reset demo data</div><div class="muted sm">Start fresh with seed data</div></div></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px;line-height:1.6">MacroVault v2.0<br>Log food · Track macros · Build your body 💪</div>`;
 }
+
+// ---- Haptic feedback (iOS/Android) ----
+const haptic=(ms=10)=>{try{if(navigator.vibrate)navigator.vibrate(ms);}catch(e){}};
+
+// ---- Achievement badges ----
+function achievements(){
+  const out=[];const st=streak();const t=totals();
+  const wk=weekData();const wkLogged=wk.filter(x=>x.kcal>0).length;
+  const pHit=weekData().filter(x=>{const h=(S.history||{})[dayKey(x.off)];return h&&(h.p||0)>=GOAL.p*0.9;}).length;
+  if(st>=3)out.push({e:'🔥',t:`${st} day streak`,c:'#F6B73C'});
+  if(st>=7)out.push({e:'🏅',t:'Week warrior',c:'#BEF264'});
+  if(st>=30)out.push({e:'💎',t:'30-day legend',c:'#A78BFA'});
+  if(pHit>=5)out.push({e:'💪',t:'Protein king',c:'#2DD4BF'});
+  if(wkLogged>=6)out.push({e:'📓',t:'Consistent logger',c:'#BEF264'});
+  if(S.water>=2500)out.push({e:'💧',t:'Hydration goal hit',c:'#38BDF8'});
+  const bench=S.metrics.bench;if(bench&&bench.length>1&&bench[bench.length-1][1]>=Math.max(...bench.map(x=>x[1])))out.push({e:'🏋️',t:'New bench PR!',c:'#BEF264'});
+  if((S.steps[today()]||0)>=10000)out.push({e:'👟',t:'10k steps today',c:'#2DD4BF'});
+  if((S.sleep[today()]||0)>=8)out.push({e:'😴',t:'8h sleep',c:'#A78BFA'});
+  const burned=S.exercise[today()]||0;if(burned>=300)out.push({e:'🚴',t:'300 kcal burned',c:'#F6735A'});
+  return out;}
+
+// ---- Calorie timeline (when meals were logged) ----
+function mealTimeline(){
+  const slots=SLOTS.map(([k,n])=>{const foods=S.meals[k];if(!foods.length)return null;
+    const kc=Math.round(foods.reduce((s,x)=>s+x.kcal*x.qty,0));
+    const time=foods.find(x=>x.time)?.time||'';
+    const meta=SLOT_META[k]||{emoji:'🍽️',color:'#BEF264'};
+    return{k,n,kc,time,emoji:meta.emoji,color:meta.color};}).filter(Boolean);
+  if(!slots.length)return '';
+  return `<div class="card fade" style="padding:12px 16px">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h3 style="margin:0;font-size:14px">Meal timeline</h3>
+      <span class="muted sm">${fmt(totals().kcal)} kcal total</span></div>
+    <div style="position:relative;padding-left:28px">
+      <div style="position:absolute;left:11px;top:8px;bottom:8px;width:2px;background:var(--surfH);border-radius:2px"></div>
+      ${slots.map((s,i)=>`<div style="position:relative;margin-bottom:${i<slots.length-1?'14':'0'}px">
+        <div style="position:absolute;left:-22px;width:12px;height:12px;border-radius:50%;background:${s.color};top:3px;border:2px solid var(--bg)"></div>
+        <div class="row" style="justify-content:space-between">
+          <div style="font-size:14px;font-weight:600">${s.emoji} ${s.n}${s.time?`<span style="color:var(--muted);font-size:11px;font-weight:400;margin-left:6px">${s.time}</span>`:''}</div>
+          <div style="font-size:14px;font-weight:700;color:${s.color}">${fmt(s.kc)} cal</div>
+        </div></div>`).join('')}
+    </div></div>`;}
 
 // ---- Recipe builder ----
 window._recipe={name:'',ingredients:[]};
