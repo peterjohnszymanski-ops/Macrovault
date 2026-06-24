@@ -653,6 +653,17 @@ function renderToday(){
         </div>${foodRows}`;}).join('')}
     </div>
 
+    ${(()=>{if(!isToday)return'';const t=totals();if(t.kcal>0||Object.keys(S.history||{}).length>1)return'';
+      return`<div class="card fade" style="text-align:center;padding:28px 16px;margin-bottom:14px;border:.5px solid #BEF26433">
+        <div style="font-size:52px;margin-bottom:12px">🥗</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:6px">Welcome to MacroVault!</div>
+        <div class="muted sm" style="margin-bottom:16px;line-height:1.6">Start logging your meals to track macros, hit your goals, and build your best body.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn" onclick="addFood('breakfast')"><i class="ti ti-plus"></i> Log your first meal</button>
+          <button class="ghost" onclick="openGoalSettings()"><i class="ti ti-target"></i> Set your calorie & macro goals</button>
+          <button class="ghost" onclick="scanBarcode()"><i class="ti ti-barcode"></i> Scan a food barcode</button>
+        </div></div>`;})()}
+
     ${isToday?dayCompleteCard():''}
     ${isToday?energyCard():''}
     ${isToday?foodGroups():''}
@@ -891,6 +902,17 @@ function renderFoodPage(q){
     if(s==='kcal')return[...arr].sort((a,b)=>a.kcal-b.kcal);
     if(s==='fav')return[...arr].sort((a,b)=>{const fa=(S.usage[fkey(a)]||{}).fav?1:0,fb=(S.usage[fkey(b)]||{}).fav?1:0;return fb-fa;});
     return arr;};
+  // Category quick-search chips
+  const catChips=!q.trim()?`<div style="margin-bottom:10px">
+    <div class="muted sm" style="margin-bottom:6px">Browse by category</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${[['🍗','Protein','chicken beef salmon egg tuna'],['🌾','Grains','rice bread oat pasta'],
+         ['🥛','Dairy','milk yogurt cheese'],['🍎','Fruits','apple banana orange berry mango'],
+         ['🥦','Veggies','broccoli spinach salad carrot'],['🥑','Fats','avocado almond olive oil'],
+         ['🍫','Snacks','chocolate protein bar granola'],['☕','Drinks','coffee tea milk shake']].map(([e,n,terms])=>
+        `<button class="chip" onclick="document.getElementById('foodQ').value='${terms.split(' ')[0]}';renderFoodPage('${terms.split(' ')[0]}')" style="display:flex;align-items:center;gap:6px;padding:6px 12px">
+          <span>${e}</span><span>${n}</span></button>`).join('')}
+    </div></div>`:'';
   const allDB=allFoods();
   if(q.trim()){
     const ql=q.toLowerCase();
@@ -957,6 +979,7 @@ function renderFoodPage(q){
         ${[['def','Relevant'],['p','Highest protein'],['kcal','Lowest cal'],['fav','Favorites first']].map(([k,l])=>
           `<button class="chip ${(window._foodSort||'def')===k?'on':''}" onclick="window._foodSort='${k}';renderFoodPage(document.getElementById('foodQ')?.value||'')">${l}</button>`).join('')}
       </div>`:''}
+      ${catChips}
       <div id="foodList">${list}</div>
       <div id="offBox3" style="margin-top:4px"></div>
     </div>`;
@@ -1236,6 +1259,30 @@ function renderProgress(){
         <span><i style="display:inline-block;width:8px;height:8px;background:#BEF264;border-radius:2px;margin-right:4px"></i>Today</span>
       </div>
     </div>
+
+    ${(()=>{
+      const mac7=[];for(let i=6;i>=0;i--){const d=dayKey(-i);const h=S.history[d];
+        mac7.push({d,p:h?h.p||0:0,c:h?h.c||0:0,f:h?h.f||0:0,logged:h?h.logged:false});}
+      const maxM=Math.max(1,...mac7.map(x=>x.p*4+x.c*4+x.f*9));
+      const bars=mac7.map(x=>{const tot=x.p*4+x.c*4+x.f*9;const h=Math.round(tot/maxM*100);
+        const ph=Math.round(x.p*4/maxM*100),ch=Math.round(x.c*4/maxM*100),fh=Math.round(x.f*9/maxM*100);
+        const isT=x.d===today();
+        return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+          <div style="width:100%;flex:1;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px;overflow:hidden;min-height:80px">
+            ${tot>0?`<div style="height:${ph}%;background:#2DD4BF;min-height:2px"></div>
+              <div style="height:${ch}%;background:#F6B73C;min-height:2px"></div>
+              <div style="height:${fh}%;background:#A78BFA;min-height:2px"></div>`
+              :`<div style="height:100%;background:var(--surfH)"></div>`}
+          </div>
+          <div class="muted sm" style="font-size:9px;font-weight:${isT?'800':'400'};color:${isT?'var(--accent)':'var(--muted)'}">${new Date(x.d+'T12:00:00').toLocaleDateString(undefined,{weekday:'short'})}</div>
+        </div>`}).join('');
+      return`<div class="card fade" style="margin-bottom:14px">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3 style="margin:0">7-day macros</h3>
+          <div style="font-size:10px;display:flex;gap:10px">
+            <span style="color:#2DD4BF">■ P</span><span style="color:#F6B73C">■ C</span><span style="color:#A78BFA">■ F</span>
+          </div></div>
+        <div style="display:flex;gap:4px;height:110px">${bars}</div></div>`;})()}
 
     ${(()=>{
       const weeks=13;const days=weeks*7;const cells=[];
