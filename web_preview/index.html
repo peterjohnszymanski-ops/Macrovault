@@ -650,6 +650,9 @@ function renderToday(){
             ${isToday?`<button class="diary-add" onclick="addFood('${k}')" style="border-color:${meta.color}22;color:${meta.color}"><i class="ti ti-plus"></i></button>`:''}
           </div>
           ${mealP>0?`<div style="margin-top:4px"><div class="row" style="justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px"><span>P: ${mealP}g</span><span>/${perMealPTarget}g target</span></div><div class="bar" style="height:4px"><i style="width:${pPct}%;background:#2DD4BF"></i></div></div>`:''}
+          ${isToday&&foods.length>0?`<div style="margin-top:6px">
+            <button onclick="event.stopPropagation();copyMealTo('${k}')" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:0"><i class="ti ti-copy" style="font-size:12px"></i> Copy to another meal</button>
+          </div>`:''}
         </div>${foodRows}`;}).join('')}
     </div>
 
@@ -1093,6 +1096,9 @@ function renderPortion(){const {f,qty}=window._port;const kc=Math.round(f.kcal*q
       Object.entries(MTARGET).filter(([k])=>micro[k]>0).slice(0,6).map(([k,[tg,unit]])=>{
         const v=micro[k]*qty;return`<span style="color:var(--muted)">${k.charAt(0).toUpperCase()+k.slice(1)}: <b style="color:var(--text)">${+(v.toFixed(1))}${unit}</b></span>`;}).join('')
     }</div>`:''}
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      ${[0.5,1,1.5,2,3].map(n=>`<button onclick="document.getElementById('portInput').value=${n};portQtyDirect(${n})" style="flex:1;background:var(--surfH);border:none;border-radius:10px;padding:6px;font-size:13px;font-weight:700;cursor:pointer;min-width:42px">${n}×</button>`).join('')}
+    </div>
     <div style="margin-bottom:12px">${chips}</div>
     <button class="btn" onclick="portAdd()">Add to ${SLOTS.find(s=>s[0]===activeSlot)?.[1]||'meal'}</button>`);
   setTimeout(()=>{const e=document.getElementById('portInput');if(e){e.focus();e.select();}},80);}
@@ -2210,6 +2216,17 @@ window.saveVitals=()=>{
   if(!sys||!dia){toast('Enter systolic and diastolic');return;}
   const hr=parseInt(document.getElementById('vHr')?.value||'0')||null;
   S.vitals.push({date:today(),sys,dia,hr});save();openVitals();toast('Vitals logged');haptic(10);};
+
+// ---- Copy meal to another slot ----
+window.copyMealTo=fromKey=>{
+  const foods=S.meals[fromKey]||[];if(!foods.length){toast('Nothing to copy');return;}
+  const opts=SLOTS.filter(([k])=>k!==fromKey).map(([k,n])=>
+    `<button class="ghost" onclick="doCopyMeal('${fromKey}','${k}');closeSheet()" style="margin-bottom:8px"><i class='ti ti-arrow-right'></i> ${n}</button>`).join('');
+  openSheet(`<h3>Copy to...</h3><div style="margin-top:8px">${opts}</div>`);};
+window.doCopyMeal=(from,to)=>{
+  const t=new Date().toTimeString().slice(0,5);
+  (S.meals[from]||[]).forEach(f=>S.meals[to].push({...f,time:t}));
+  save();renderToday();toast('Copied to '+(SLOTS.find(s=>s[0]===to)?.[1]||to));};
 
 // ---- Grocery list generator ----
 window.openGroceryList=()=>{
