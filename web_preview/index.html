@@ -172,6 +172,12 @@
 </div>
 <div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:80px;left:12px;right:12px;background:var(--surf);border:.5px solid #BEF26444;border-radius:16px;padding:12px 16px;z-index:40;align-items:center;gap:12px;box-shadow:0 4px 24px #00000044">
+  <span style="font-size:24px">📲</span>
+  <div style="flex:1"><div style="font-size:14px;font-weight:700">Add MacroVault to home screen</div><div class="muted sm">Faster access, offline support</div></div>
+  <button class="btn" style="width:auto;padding:8px 16px;font-size:13px" onclick="pwaInstall()">Install</button>
+  <button onclick="pwaDismiss()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:4px">×</button>
+</div>
 
 <script>
 const C=2*Math.PI*52;
@@ -188,6 +194,15 @@ applyTheme();
 const fmt=n=>Math.round(n).toLocaleString();
 // AI model — default to Haiku 4.5 (cheapest); user can pick a stronger one.
 const aiModel=()=>localStorage.getItem('aiModel')||'claude-haiku-4-5';
+let _deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();_deferredInstall=e;
+  const b=document.getElementById('pwa-install-banner');if(b)b.style.display='flex';});
+window.pwaInstall=async()=>{if(!_deferredInstall)return;_deferredInstall.prompt();
+  const r=await _deferredInstall.userChoice;_deferredInstall=null;
+  const b=document.getElementById('pwa-install-banner');if(b)b.style.display='none';
+  if(r.outcome==='accepted')toast('Added to home screen!');};
+window.pwaDismiss=()=>{const b=document.getElementById('pwa-install-banner');if(b)b.style.display='none';
+  _deferredInstall=null;};
 const today=()=> new Date().toISOString().slice(0,10);
 const dayKey=off=>{const d=new Date();d.setDate(d.getDate()+off);return d.toISOString().slice(0,10);};
 const dayShort=off=>['S','M','T','W','T','F','S'][new Date(Date.now()+off*864e5).getDay()];
@@ -312,6 +327,7 @@ S.notes=S.notes||{};
 S.recipes=S.recipes||[];
 S.measHistory=S.measHistory||{};
 S.customFoods=S.customFoods||[];
+S.supps=S.supps||{items:[],log:{}};
 window._snapHistory=window._snapHistory||[];
 function load(){
   const raw=localStorage.getItem('mv6');
@@ -1120,6 +1136,29 @@ function renderProgress(){
       </div>
     </div>
 
+    ${(()=>{
+      const p30=(()=>{const a=[];for(let i=29;i>=0;i--){const d=dayKey(-i);const h=S.history[d];a.push({p:h?h.p||0:0,logged:h?h.logged:false});}return a;})();
+      const p30max=Math.max(GOAL.p*1.2,...p30.map(x=>x.p),1);
+      const pGoalLine=Math.round((1-GOAL.p/p30max)*100);
+      const loggedDays=p30.filter(x=>x.logged).length;
+      const hitDays=p30.filter(x=>x.p>=GOAL.p*0.9).length;
+      const bars=p30.map((x,i)=>{const h=Math.round(x.p/p30max*100);const isT=i===29;
+        const col=!x.logged?'#1C2530':x.p>=GOAL.p?'#2DD4BF':x.p>=GOAL.p*0.7?'#F6B73C':'#F6735A';
+        return `<rect x="${i*barW}" y="${100-h}" width="${barW-1}" height="${h}" fill="${col}" rx="2"/>`;}).join('');
+      return `<div class="card fade">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <h3 style="margin:0">30-day protein</h3>
+          <span class="muted sm">${hitDays}/${loggedDays} days hit goal</span></div>
+        <svg width="100%" height="100" viewBox="0 0 300 100">
+          <line x1="0" y1="${pGoalLine}" x2="300" y2="${pGoalLine}" stroke="#2DD4BF44" stroke-width="1" stroke-dasharray="4 3"/>
+          <text x="302" y="${pGoalLine+4}" fill="#2DD4BF88" font-size="8">${GOAL.p}g</text>
+          ${bars}</svg>
+        <div style="display:flex;gap:14px;margin-top:6px;font-size:11px">
+          <span><i style="display:inline-block;width:8px;height:8px;background:#2DD4BF;border-radius:2px;margin-right:4px"></i>Goal hit</span>
+          <span><i style="display:inline-block;width:8px;height:8px;background:#F6B73C;border-radius:2px;margin-right:4px"></i>70%+</span>
+          <span><i style="display:inline-block;width:8px;height:8px;background:#F6735A;border-radius:2px;margin-right:4px"></i>Low protein</span>
+        </div></div>`;})()}
+
     <div class="card fade">
       <div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="margin:0">Strength & Body</h3>
         ${tr.length?`<span class="muted sm">${trend}/${tr.length} trending right</span>`:''}</div>
@@ -1633,6 +1672,8 @@ function renderMore(){
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
     ${row('📖','My recipes',S.recipes.length?S.recipes.length+' saved recipes':'Create meal combos & save them','openRecipes()')}
     ${row('🥣','My foods',S.customFoods.length?S.customFoods.length+' custom foods saved':'Add foods not in the database','openCreateFood()')}
+    ${(()=>{const todayLog=(S.supps?.log||{})[today()]||[];const total=(S.supps?.items||[]).length;
+      return row('💊','Supplements',total?(todayLog.length+'/'+total+' taken today'):'Track daily vitamins & supplements','openSupps()');})()}
     ${row('📏','Body measurements',S.measHistory&&Object.keys(S.measHistory).length?'Last: '+Object.keys(S.measHistory).sort().slice(-1)[0]:'Track waist, arms, chest over time','logMeasurement()')}
     ${row('📥','Export today\'s log','Download as CSV file','exportCSV()')}
     ${row('🧪','Full micronutrients','Fiber, vitamins, minerals, sodium','openMicros()')}
@@ -1685,6 +1726,36 @@ function mealTimeline(){
           <div style="font-size:14px;font-weight:700;color:${s.color}">${fmt(s.kc)} cal</div>
         </div></div>`).join('')}
     </div></div>`;}
+
+// ---- Supplement tracker ----
+const SUPP_PRESETS=['Vitamin D3','Magnesium','Fish Oil','Creatine','Zinc','B12','Vitamin C','Protein Powder','Collagen','Multivitamin'];
+window.openSupps=()=>{
+  S.supps=S.supps||{items:[],log:{}};
+  const todayLog=S.supps.log[today()]||[];
+  const allItems=S.supps.items;
+  openSheet(`<h3>💊 Supplements</h3>
+    ${allItems.length?`<div class="muted sm" style="margin-bottom:8px">Tap to mark taken today</div>
+    ${allItems.map(s=>{const taken=todayLog.includes(s.name);
+      return `<div class="fitem" onclick="toggleSupp(${JSON.stringify(s.name)})" style="border-color:${taken?'#2DD4BF33':'transparent'}">
+        <div><div style="font-weight:600">${s.name}</div>${s.dose?`<div class="muted sm">${s.dose}</div>`:''}</div>
+        <div style="color:${taken?'#2DD4BF':'var(--muted)'};font-size:20px">${taken?'✓':'○'}</div>
+      </div>`;}).join('')}
+    <div style="margin-top:10px;padding-top:10px;border-top:.5px solid var(--surfH)">
+    <div class="muted sm" style="margin-bottom:6px">Progress today: ${todayLog.length}/${allItems.length} taken</div>
+    <div class="bar" style="height:6px"><i style="width:${allItems.length?Math.round(todayLog.length/allItems.length*100):0}%;background:#2DD4BF"></i></div></div>
+    `:'<div class="muted sm" style="margin-bottom:12px">No supplements added yet.</div>'}
+    <div style="margin-top:14px"><div class="muted sm" style="margin-bottom:8px">Quick add</div>
+    <div class="hscroll">${SUPP_PRESETS.filter(p=>!allItems.find(x=>x.name===p)).map(p=>
+      `<button class="qchip" onclick="addSupp(${JSON.stringify(p)})">${p}</button>`).join('')}</div></div>
+    <button class="ghost" style="margin-top:10px;font-size:13px" onclick="addCustomSupp()"><i class="ti ti-plus"></i> Custom supplement</button>`);};
+window.toggleSupp=name=>{S.supps.log=S.supps.log||{};S.supps.log[today()]=S.supps.log[today()]||[];
+  const arr=S.supps.log[today()];const idx=arr.indexOf(name);idx<0?arr.push(name):arr.splice(idx,1);
+  haptic(8);save();openSupps();};
+window.addSupp=name=>{if(S.supps.items.find(x=>x.name===name))return;
+  S.supps.items.push({name,dose:''});save();openSupps();toast('Added '+name);};
+window.addCustomSupp=()=>{const n=prompt('Supplement name:');if(!n||!n.trim())return;
+  const d=prompt('Dose (optional, e.g. "500mg"):');
+  S.supps.items.push({name:n.trim(),dose:d?.trim()||''});save();openSupps();};
 
 // ---- Custom food creation ----
 window.openCreateFood=()=>{
