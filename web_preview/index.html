@@ -880,10 +880,15 @@ function renderFoodPage(q){
     <div style="height:10px"></div>`:'';
 
   let list;
+  const sortFoods=arr=>{const s=window._foodSort||'def';
+    if(s==='p')return[...arr].sort((a,b)=>b.p-a.p);
+    if(s==='kcal')return[...arr].sort((a,b)=>a.kcal-b.kcal);
+    if(s==='fav')return[...arr].sort((a,b)=>{const fa=(S.usage[fkey(a)]||{}).fav?1:0,fb=(S.usage[fkey(b)]||{}).fav?1:0;return fb-fa;});
+    return arr;};
   const allDB=allFoods();
   if(q.trim()){
     const ql=q.toLowerCase();
-    const r=allDB.filter(f=>f.name.toLowerCase().includes(ql)||(f.brand||'').toLowerCase().includes(ql));
+    const r=sortFoods(allDB.filter(f=>f.name.toLowerCase().includes(ql)||(f.brand||'').toLowerCase().includes(ql)));
     list=(r.length?`<div class="food-section-lbl">Results (${r.length})</div>`+r.map(rowHtml).join('')
       :'<div style="padding:16px 4px;color:var(--muted);font-size:14px">No matches — try a brand name, or <button class="ghost" style="display:inline;padding:4px 10px;font-size:13px;width:auto" onclick="openCreateFood()">create this food</button></div>');
   }else{
@@ -942,6 +947,10 @@ function renderFoodPage(q){
         <i class="ti ti-search"></i>
         <input id="foodQ" class="in" placeholder="Search Oikos, protein powder, a brand…" value="${q.replace(/"/g,'&quot;')}" oninput="renderFoodPage(this.value)">
       </div>
+      ${q.trim()?`<div class="hscroll" style="gap:6px;margin-bottom:8px">
+        ${[['def','Relevant'],['p','Highest protein'],['kcal','Lowest cal'],['fav','Favorites first']].map(([k,l])=>
+          `<button class="chip ${(window._foodSort||'def')===k?'on':''}" onclick="window._foodSort='${k}';renderFoodPage(document.getElementById('foodQ')?.value||'')">${l}</button>`).join('')}
+      </div>`:''}
       <div id="foodList">${list}</div>
       <div id="offBox3" style="margin-top:4px"></div>
     </div>`;
@@ -1106,6 +1115,13 @@ function renderProgress(){
   vis.forEach(s=>{const ns=norm(s.pts);
     const xy=ns.map(p=>[(days.length<2?0.5:xi[p[0]]/(days.length-1))*W, H-14-p[1]*(H-38)]);
     chart+=`<polyline fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round" ${s.dash?'stroke-dasharray="5 4"':''} points="${xy.map(a=>a.join(',')).join(' ')}"/>`;
+    // 7-day rolling average for weight
+    if(s.key==='weight'&&s.pts.length>=3){
+      const raw=s.pts;const mn=Math.min(...raw.map(p=>p[1])),mx=Math.max(...raw.map(p=>p[1])),r2=(mx-mn)||1;
+      const avgPts=raw.map((p,i)=>{const window7=raw.slice(Math.max(0,i-3),Math.min(raw.length,i+4));
+        const avg=window7.reduce((s,x)=>s+x[1],0)/window7.length;
+        return[(days.length<2?0.5:xi[p[0]]/(days.length-1))*W, H-14-((avg-mn)/r2)*(H-38)];});
+      chart+=`<polyline fill="none" stroke="#2DD4BF" stroke-width="1.5" stroke-dasharray="3 2" opacity=".5" points="${avgPts.map(a=>a.join(',')).join(' ')}"/>`;}
     const last=xy[xy.length-1],lv=s.pts[s.pts.length-1][1];
     chart+=`<circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="${s.color}"/><text x="${Math.min(last[0]+5,W-22)}" y="${Math.max(11,last[1]-6)}" fill="${s.color}" font-size="10" font-weight="700">${lv}</text>`;});
   if(!vis.length)chart=`<text x="150" y="84" fill="#5C6670" font-size="12" text-anchor="middle">Tap a legend item to show it</text>`;
