@@ -194,7 +194,7 @@ const dayShort=off=>['S','M','T','W','T','F','S'][new Date(Date.now()+off*864e5)
 const greeting=()=>{const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening';};
 const currentSlot=()=>{const h=new Date().getHours();return h<11?'breakfast':h<16?'lunch':h<21?'dinner':'snack';};
 
-const GOAL={cal:2200,p:176,c:200,f:61};
+let GOAL=Object.assign({cal:2200,p:176,c:200,f:61},JSON.parse(localStorage.getItem('mv_goal')||'{}'));
 const SLOTS=[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snack','Snacks']];
 const DB=[
   ['Chicken breast','100 g',165,31,0,3.6],['White rice','1 cup',205,4,45,0.4],
@@ -307,7 +307,8 @@ function load(){
 }
 function syncHistory(){const t=totals();S.history=S.history||{};
   S.history[today()]={kcal:Math.round(t.kcal),p:Math.round(t.p),logged:t.kcal>0,
-    sleep:S.sleep[today()]||null,steps:S.steps[today()]||0};}
+    sleep:S.sleep[today()]||null,steps:S.steps[today()]||0,
+    _meals:{breakfast:[...S.meals.breakfast],lunch:[...S.meals.lunch],dinner:[...S.meals.dinner],snack:[...S.meals.snack]}};}
 function save(){syncHistory();localStorage.setItem('mv6',JSON.stringify(S));}
 const timeNow=()=>new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 function log1(state,slot,name){const f=G(DB.find(d=>d[0]===name));
@@ -525,11 +526,15 @@ function renderToday(){
       ${SLOTS.map(([k,n])=>{
         const foods=S.meals[k];const kc=mealKcal(k);
         const foodRows=foods.map((x,i)=>`
-          <div class="diary-food" onclick="editItemQty('${k}',${i})">
+          <div class="diary-food" onclick="diaryFoodDetail('${k}',${i})">
             <div style="font-size:22px;width:36px;flex-shrink:0;text-align:center">${foodEmoji(x.name)}</div>
             <div style="flex:1;min-width:0;padding-left:8px">
               <div class="diary-food-name">${x.name}${x.brand?`<span class="diary-food-brand"> · ${x.brand}</span>`:''}</div>
-              <div class="diary-food-meta">${x.qty%1===0?x.qty:x.qty.toFixed(1)}× · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}g${x.time?` · <span style="color:var(--muted)">${x.time}</span>`:''}</div>
+              <div class="diary-food-meta">${x.qty%1===0?x.qty:x.qty.toFixed(1)}× · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}g${x.time?` · ${x.time}`:''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;padding-right:6px">
+              <div style="font-size:14px;font-weight:700;color:var(--accent)">${Math.round(x.kcal*x.qty)}</div>
+              <div style="font-size:11px;color:var(--muted)">kcal</div>
             </div>
             <button class="diary-del" onclick="event.stopPropagation();delItem('${k}',${i})"><i class="ti ti-x"></i></button>
           </div>`).join('');
@@ -1425,21 +1430,27 @@ window.saveCapsule=()=>{const s=weekStats();const tags=['cutting'];if(s.pAdh>=80
   save();renderVault();toast('Saved to Vault');};
 
 function renderMore(){
+  const slp=S.sleep[today()];const stps=S.steps[today()]||0;const burned=S.exercise[today()]||0;
+  const row=(emoji,title,sub,action)=>`<div class="card" onclick="${action}" style="cursor:pointer">
+    <div class="row" style="gap:12px;align-items:center">
+      <div style="width:44px;height:44px;border-radius:14px;background:var(--surfH);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${emoji}</div>
+      <div style="flex:1"><div style="font-weight:600">${title}</div><div class="muted sm">${sub}</div></div>
+      <i class="ti ti-chevron-right muted"></i></div></div>`;
   $('#view-more').innerHTML=`
-    <div class="card"><div class="row" style="gap:12px"><i class="ti ti-user" style="font-size:22px"></i>
-      <div><div>You</div><div class="muted sm">Recomp · 2200 kcal · 176g protein</div></div></div></div>
-    <div class="card" onclick="openCoachSettings()" style="cursor:pointer">
-      <div class="row" style="justify-content:space-between"><span><i class="ti ti-barbell"></i> Gym coach &amp; alerts</span>
-      <span class="muted sm">${S.coach.enabled?'Alerts on':'Gym '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1]))}</span></div></div>
-    <div class="card" onclick="openKeySetup()" style="cursor:pointer">
-      <div class="row" style="justify-content:space-between"><span><i class="ti ti-camera"></i> Food photo AI</span>
-      <span class="muted sm">${localStorage.getItem('anthropicKey')?'On':'Set up'}</span></div></div>
-    <div class="card" onclick="setupVaultLock()" style="cursor:pointer">
-      <div class="row" style="justify-content:space-between"><span><i class="ti ti-lock"></i> Vault privacy lock</span>
-      <span class="muted sm">${S.lock.enabled?'On':'Off'}</span></div></div>
-    <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv6');S=load();renderAll();toast('Reset');}" style="cursor:pointer">
-      <div class="row" style="justify-content:space-between"><span><i class="ti ti-refresh"></i> Reset demo data</span></div></div>
-    <div class="muted sm" style="text-align:center;margin-top:16px">Web preview of MacroVault.<br>The native iOS app adds barcode scan, camera AI, biometric Vault lock & encrypted storage.</div>`;
+    ${row('🎯','Daily goals',`${GOAL.cal} kcal · ${GOAL.p}g protein`,'openGoalSettings()')}
+    ${row('📋','Copy yesterday\'s meals','Re-log everything from yesterday','copyYesterday()')}
+    ${row('🔥','Exercise calories',burned?burned+' kcal burned today':'Log workout to boost budget','logExercise()')}
+    ${row('😴','Sleep',slp?slp+'h last night':'Tap to log','logSleep()')}
+    ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
+    ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
+    ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('🧪','Full micronutrients','Fiber, vitamins, minerals, sodium','openMicros()')}
+    ${row('🔒','Vault privacy lock',S.lock.enabled?'PIN protected':'Disabled','setupVaultLock()')}
+    <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv6');localStorage.removeItem('mv_goal');GOAL={cal:2200,p:176,c:200,f:61};S=load();renderAll();toast('Reset');}" style="cursor:pointer">
+      <div class="row" style="gap:12px;align-items:center">
+        <div style="width:44px;height:44px;border-radius:14px;background:var(--surfH);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🔄</div>
+        <div style="flex:1"><div style="font-weight:600">Reset demo data</div><div class="muted sm">Start fresh with seed data</div></div></div></div>
+    <div class="muted sm" style="text-align:center;margin-top:16px;line-height:1.6">MacroVault v2.0<br>Log food · Track macros · Build your body 💪</div>`;
 }
 
 // ---- Daily notes ----
@@ -1489,6 +1500,102 @@ window.logExercise=()=>{
     ${cur?`<div class="muted sm" style="margin-top:10px">Today: <b style="color:var(--accent)">${cur} kcal</b> burned · <button class="ghost" style="display:inline;padding:4px 10px;font-size:12px;width:auto" onclick="S.exercise[today()]=0;save();renderToday();closeSheet();toast('Cleared')">Clear</button></div>`:''}`);
 };
 window.addExercise=kcal=>{if(!kcal)return;S.exercise[today()]=(S.exercise[today()]||0)+kcal;save();renderToday();toast('+'+kcal+' kcal exercise burned');};
+
+// ---- Goal settings + TDEE calculator ----
+window.openGoalSettings=()=>{
+  openSheet(`<h3>🎯 Daily goals</h3>
+    <div class="muted sm" style="margin-bottom:14px">Set manually or use the TDEE calculator below.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><div class="muted sm">Calories</div><input id="gCal" class="in" type="number" value="${GOAL.cal}"></div>
+      <div><div class="muted sm">Protein (g)</div><input id="gP" class="in" type="number" value="${GOAL.p}"></div>
+      <div><div class="muted sm">Carbs (g)</div><input id="gC" class="in" type="number" value="${GOAL.c}"></div>
+      <div><div class="muted sm">Fat (g)</div><input id="gF" class="in" type="number" value="${GOAL.f}"></div>
+    </div>
+    <button class="btn" style="margin-bottom:10px" onclick="saveGoals()">Save goals</button>
+    <div style="border-top:.5px solid var(--surfH);padding-top:14px;margin-top:4px">
+      <div style="font-weight:700;margin-bottom:10px">TDEE Calculator</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div><div class="muted sm">Age</div><input id="tAge" class="in" type="number" placeholder="28" value="${S.meas.age||''}"></div>
+        <div><div class="muted sm">Weight (lbs)</div><input id="tWt" class="in" type="number" placeholder="180" value="${S.weight.length?S.weight[S.weight.length-1][1]:''}"></div>
+        <div><div class="muted sm">Height</div><input id="tHt" class="in" type="number" placeholder="cm" value="${S.meas.height||180}"></div>
+        <div><div class="muted sm">Sex</div>
+          <select id="tSex" class="in"><option value="male" ${(S.meas.sex||'male')==='male'?'selected':''}>Male</option><option value="female" ${(S.meas.sex||'male')==='female'?'selected':''}>Female</option></select></div>
+      </div>
+      <div class="muted sm" style="margin-bottom:6px">Activity level</div>
+      <select id="tAct" class="in" style="margin-bottom:12px">
+        <option value="1.2">Sedentary (desk job, little exercise)</option>
+        <option value="1.375" selected>Lightly active (1-3 days/week)</option>
+        <option value="1.55">Moderately active (3-5 days/week)</option>
+        <option value="1.725">Very active (6-7 days/week)</option>
+        <option value="1.9">Extra active (physical job + training)</option>
+      </select>
+      <div class="muted sm" style="margin-bottom:6px">Goal</div>
+      <select id="tGoal" class="in" style="margin-bottom:12px">
+        <option value="-500">Lose weight (-500 kcal deficit)</option>
+        <option value="-250">Slow cut (-250 kcal deficit)</option>
+        <option value="0" selected>Maintain weight</option>
+        <option value="250">Slow bulk (+250 kcal surplus)</option>
+        <option value="500">Bulk (+500 kcal surplus)</option>
+      </select>
+      <div id="tdeeOut" style="text-align:center;padding:10px;background:var(--surfH);border-radius:12px;margin-bottom:10px;display:none"></div>
+      <button class="btn" style="background:var(--surfH);color:var(--text)" onclick="calcTDEE()">Calculate TDEE</button>
+    </div>`);};
+window.calcTDEE=()=>{
+  const age=parseFloat(document.getElementById('tAge').value)||28;
+  const wt=parseFloat(document.getElementById('tWt').value)||180;
+  const ht=parseFloat(document.getElementById('tHt').value)||180;
+  const sex=document.getElementById('tSex').value;
+  const act=parseFloat(document.getElementById('tAct').value)||1.375;
+  const adj=parseInt(document.getElementById('tGoal').value)||0;
+  const wtKg=wt*0.453592;
+  const bmr=sex==='male'?10*wtKg+6.25*ht-5*age+5:10*wtKg+6.25*ht-5*age-161;
+  const tdee=Math.round(bmr*act);const target=tdee+adj;
+  const protein=Math.round(wtKg*2.2);
+  const fat=Math.round(target*0.25/9);
+  const carbs=Math.round((target-protein*4-fat*9)/4);
+  S.meas={...S.meas,age,height:ht,sex};save();
+  const out=document.getElementById('tdeeOut');
+  if(out){out.style.display='block';out.innerHTML=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px">TDEE: <b>${tdee} kcal</b> · Target: <b style="color:var(--accent)">${target} kcal</b></div><div style="font-size:12px;color:var(--muted)">Protein: ${protein}g · Carbs: ${carbs}g · Fat: ${fat}g</div><button class="btn" style="margin-top:10px;padding:10px" onclick="applyTDEE(${target},${protein},${carbs},${fat})">Apply these goals</button>`;}};
+window.applyTDEE=(cal,p,c,f)=>{GOAL={cal,p,c,f};localStorage.setItem('mv_goal',JSON.stringify(GOAL));save();closeSheet();renderAll();toast('Goals updated to '+cal+' kcal');};
+window.saveGoals=()=>{
+  const cal=parseInt(document.getElementById('gCal').value)||GOAL.cal;
+  const p=parseInt(document.getElementById('gP').value)||GOAL.p;
+  const c=parseInt(document.getElementById('gC').value)||GOAL.c;
+  const f=parseInt(document.getElementById('gF').value)||GOAL.f;
+  GOAL={cal,p,c,f};localStorage.setItem('mv_goal',JSON.stringify(GOAL));save();closeSheet();renderAll();toast('Goals saved');};
+
+// ---- Nutrition label popup (tap diary food item) ----
+window.diaryFoodDetail=(k,i)=>{
+  const x=S.meals[k][i];if(!x)return;
+  const micro=x.m||{};const qty=x.qty;
+  const rows=Object.keys(MTARGET).map(key=>{const v=((micro[key]||0)*qty);const [tg,unit,limit]=MTARGET[key];
+    const col=limit&&v>tg?'#F6735A':limit?'var(--text)':'#2DD4BF';
+    return `<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:.5px solid var(--surfH);font-size:13px">
+      <span>${MNAME[key]}</span><span style="color:${col}">${v<10?(v*10|0)/10:Math.round(v)} ${unit==='g'?'g':unit}</span></div>`;}).join('');
+  openSheet(`<h3>${x.name}${x.brand?` · <span class="muted">${x.brand}</span>`:''}</h3>
+    <div class="row" style="gap:16px;text-align:center;margin:14px 0;padding:12px;background:var(--surfH);border-radius:14px">
+      <div><div style="font-size:22px;font-weight:800">${Math.round(x.kcal*qty)}</div><div class="muted sm">kcal</div></div>
+      <div><div style="font-size:22px;font-weight:800;color:#2DD4BF">${Math.round(x.p*qty)}g</div><div class="muted sm">protein</div></div>
+      <div><div style="font-size:22px;font-weight:800;color:#F6B73C">${Math.round(x.c*qty)}g</div><div class="muted sm">carbs</div></div>
+      <div><div style="font-size:22px;font-weight:800;color:#A78BFA">${Math.round(x.f*qty)}g</div><div class="muted sm">fat</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${qty}× ${x.serv||'1 serving'} · ${x.time?x.time:''}</div>
+    ${rows?`<div style="margin-bottom:14px">${rows}</div>`:''}
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="closeSheet();editItemQty('${k}',${i})">Edit qty</button>
+      <button class="ghost" style="flex:0 0 auto;padding:14px 16px" onclick="closeSheet();delItem('${k}',${i})"><i class="ti ti-x"></i></button>
+    </div>`);};
+
+// ---- Copy yesterday's meals ----
+window.copyYesterday=()=>{
+  const yKey=dayKey(-1),yH=S.history[yKey];
+  if(!yH||!yH.logged){toast('No meals logged yesterday');return;}
+  const yMeals=yH._meals;
+  if(!yMeals){toast('Yesterday\'s meal breakdown not available — log today first to enable this');return;}
+  let count=0;
+  SLOTS.forEach(([k])=>{(yMeals[k]||[]).forEach(x=>{S.meals[k].push({...x,time:timeNow()});count++;});});
+  if(!count){toast('No foods found from yesterday');return;}
+  save();renderToday();toast('Copied '+count+' items from yesterday');};
 
 function renderAll(){renderToday();renderProgress();renderVault();renderMore();}
 function animateToday(){const el=$('#view-today');el.classList.remove('anim');void el.offsetWidth;el.classList.add('anim');}
