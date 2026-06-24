@@ -475,8 +475,17 @@ window.togTrainDay=i=>{const a=S.coach.trainDays,x=a.indexOf(i);x<0?a.push(i):a.
 
 function renderToday(){
   syncHistory();
-  const t=totals(), st=streak();
-  const burned=S.exercise[today()]||0;
+  const isToday=isViewingToday();
+  const histEntry=isToday?null:(S.history||{})[viewDate()];
+  const histMeals=histEntry?._meals||{};
+  const t=isToday?totals():(()=>{
+    const all=[...Object.values(histMeals)].flat();
+    return{kcal:all.reduce((s,x)=>s+x.kcal*x.qty,0),
+           p:all.reduce((s,x)=>s+x.p*x.qty,0),
+           c:all.reduce((s,x)=>s+x.c*x.qty,0),
+           f:all.reduce((s,x)=>s+x.f*x.qty,0)};})();
+  const st=streak();
+  const burned=S.exercise[isToday?today():viewDate()]||0;
   const netLeft=GOAL.cal+burned-t.kcal;
   const slp=S.sleep[today()]||null;
   const stps=S.steps[today()]||0;
@@ -509,11 +518,20 @@ function renderToday(){
   const wvals=S.weight.slice(-8).map(x=>x[1]);
   const wDelta=S.weight.length>1?(S.weight[S.weight.length-1][1]-S.weight[0][1]):0;
 
+  window.changeDay=d=>{_viewDay=Math.min(0,_viewDay+d);renderToday();};
+  const vDate=viewDate();
+  const dateLabel=isToday?new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})
+    :new Date(vDate+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
   $('#view-today').innerHTML=`
     <div class="fade row" style="justify-content:space-between;align-items:center;margin:2px 2px 14px">
-      <div><div style="font-size:21px;font-weight:800;letter-spacing:-.3px">${greeting()}, Peter</div>
-        <div class="muted sm">${new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</div></div>
-      <div class="pill"><i class="ti ti-flame" style="color:#F6B73C"></i> ${st} day${st===1?'':'s'}</div>
+      <div style="flex:1">
+        <div style="font-size:21px;font-weight:800;letter-spacing:-.3px">${isToday?greeting()+', Peter':'Past day'}</div>
+        <div class="muted sm">${dateLabel}</div></div>
+      <div class="row" style="gap:4px;align-items:center">
+        <button onclick="changeDay(-1)" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;font-size:20px;line-height:0;border-radius:10px"><i class="ti ti-chevron-left"></i></button>
+        <div class="pill" style="${isToday?'':'opacity:.6'}"><i class="ti ti-flame" style="color:#F6B73C"></i> ${st} day${st===1?'':'s'}</div>
+        <button onclick="changeDay(1)" style="background:none;border:none;color:${isToday?'var(--surfH)':'var(--muted)'};cursor:pointer;padding:6px;font-size:20px;line-height:0;border-radius:10px" ${isToday?'disabled':''}><i class="ti ti-chevron-right"></i></button>
+      </div>
     </div>
 
     <div class="card fade">
@@ -541,29 +559,33 @@ function renderToday(){
       </div>
     </div>
 
-    <div class="qa fade">
+    ${isToday?`<div class="qa fade">
       <button onclick="scanBarcode()"><i class="ti ti-barcode"></i>Scan</button>
       <button onclick="snapFood()"><i class="ti ti-camera"></i>Snap</button>
       <button onclick="usuals()"><i class="ti ti-replace"></i>Usuals</button>
       <button class="primary" onclick="addFood('${currentSlot()}')"><i class="ti ti-plus"></i>Add</button>
-    </div>
+    </div>`:''}
 
-    ${coachCard}
+    ${isToday?coachCard:''}
 
-    ${quick?`<div class="fade" style="margin:6px 2px 12px">
+    ${isToday&&quick?`<div class="fade" style="margin:6px 2px 12px">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
         <h3 style="margin:0">Quick log</h3><span class="muted sm">tap → ${SLOTS.find(s=>s[0]===currentSlot())[1]}</span></div>
       <div class="hscroll">${quick}</div></div>`:''}
 
+    ${!isToday?`<div class="fade" style="background:var(--surfH);border-radius:14px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:13px;color:var(--muted)">📅 Viewing past day — read only</span>
+      <button class="ghost" style="width:auto;padding:5px 12px;font-size:12px" onclick="_viewDay=0;renderToday()">Today</button></div>`:''}
+
     <div class="card fade diary-section">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
-        <h3 style="margin:0">Today's diary</h3>
+        <h3 style="margin:0">${isToday?"Today's diary":"Diary"}</h3>
         <div class="row" style="gap:8px">
-          <button class="ghost" style="width:auto;padding:5px 10px;font-size:12px" onclick="openNotes()">📝 Note</button>
+          ${isToday?`<button class="ghost" style="width:auto;padding:5px 10px;font-size:12px" onclick="openNotes()">📝 Note</button>`:''}
           <span class="muted sm">${fmt(t.kcal)} kcal</span></div></div>
-      ${S.notes[today()]?`<div style="font-size:13px;color:var(--muted);padding:6px 10px;background:var(--surfH);border-radius:10px;margin-bottom:10px;line-height:1.5;cursor:pointer" onclick="openNotes()">📝 ${S.notes[today()]}</div>`:''}
+      ${isToday&&S.notes[today()]?`<div style="font-size:13px;color:var(--muted);padding:6px 10px;background:var(--surfH);border-radius:10px;margin-bottom:10px;line-height:1.5;cursor:pointer" onclick="openNotes()">📝 ${S.notes[today()]}</div>`:''}
       ${SLOTS.map(([k,n])=>{
-        const foods=S.meals[k];const kc=mealKcal(k);
+        const foods=isToday?S.meals[k]:(histMeals[k]||[]);const kc=foods.reduce((s,x)=>s+x.kcal*x.qty,0);
         const foodRows=foods.map((x,i)=>`
           <div class="diary-food" onclick="diaryFoodDetail('${k}',${i})">
             <div style="font-size:22px;width:36px;flex-shrink:0;text-align:center">${foodEmoji(x.name)}</div>
@@ -575,7 +597,7 @@ function renderToday(){
               <div style="font-size:14px;font-weight:700;color:var(--accent)">${Math.round(x.kcal*x.qty)}</div>
               <div style="font-size:11px;color:var(--muted)">kcal</div>
             </div>
-            <button class="diary-del" onclick="event.stopPropagation();delItem('${k}',${i})"><i class="ti ti-x"></i></button>
+            ${isToday?`<button class="diary-del" onclick="event.stopPropagation();delItem('${k}',${i})"><i class="ti ti-x"></i></button>`:''}
           </div>`).join('');
         const meta=SLOT_META[k]||{emoji:'🍽️',color:'#BEF264'};
         const mealP=Math.round(foods.reduce((s,x)=>s+x.p*x.qty,0));
@@ -583,14 +605,14 @@ function renderToday(){
         const pPct=Math.min(100,mealP/perMealPTarget*100);
         return `<div class="diary-meal-hdr" style="flex-direction:column;align-items:stretch">
           <div style="display:flex;align-items:center">
-            <div onclick="openFoodPage('${k}')" style="cursor:pointer;flex:1;display:flex;align-items:center;gap:8px">
+            <div style="flex:1;display:flex;align-items:center;gap:8px;${isToday?'cursor:pointer':''}" ${isToday?`onclick="openFoodPage('${k}')"`:''}>
               <span style="font-size:18px">${meta.emoji}</span>
               <div>
                 <span class="diary-meal-name" style="color:${meta.color}">${n}</span>
-                ${kc?`<span class="diary-meal-kcal">${fmt(kc)} kcal</span>`:'<span class="diary-meal-kcal">tap to add food</span>'}
+                ${kc?`<span class="diary-meal-kcal">${fmt(kc)} kcal</span>`:isToday?'<span class="diary-meal-kcal">tap to add food</span>':''}
               </div>
             </div>
-            <button class="diary-add" onclick="addFood('${k}')" style="border-color:${meta.color}22;color:${meta.color}"><i class="ti ti-plus"></i></button>
+            ${isToday?`<button class="diary-add" onclick="addFood('${k}')" style="border-color:${meta.color}22;color:${meta.color}"><i class="ti ti-plus"></i></button>`:''}
           </div>
           ${mealP>0?`<div style="margin-top:4px"><div class="row" style="justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px"><span>P: ${mealP}g</span><span>/${perMealPTarget}g target</span></div><div class="bar" style="height:4px"><i style="width:${pPct}%;background:#2DD4BF"></i></div></div>`:''}
         </div>${foodRows}`;}).join('')}
