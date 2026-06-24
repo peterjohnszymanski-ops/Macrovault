@@ -306,6 +306,8 @@ S.sleep=S.sleep||{};
 S.steps=S.steps||{};
 S.exercise=S.exercise||{};
 S.notes=S.notes||{};
+S.recipes=S.recipes||[];
+S.measHistory=S.measHistory||{};
 window._snapHistory=window._snapHistory||[];
 function load(){
   const raw=localStorage.getItem('mv6');
@@ -586,6 +588,18 @@ function renderToday(){
 
     <div class="card fade" style="margin-top:14px">
       <h3 style="margin:0 0 2px">Insights</h3>${ins}</div>
+    ${(()=>{const dp=deficitProjection();if(!dp||Math.abs(dp.lbsPerWeek)<0.05)return '';
+      const dir=dp.lbsPerWeek<0?'losing':'gaining';const col=dp.lbsPerWeek<0?'#BEF264':'#F6B73C';
+      const abs=Math.abs(dp.lbsPerWeek).toFixed(2);
+      return `<div class="card fade" style="border:.5px solid ${col}33">
+        <div class="row" style="gap:10px;align-items:center">
+          <div style="font-size:30px">${dp.lbsPerWeek<0?'📉':'📈'}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:${col}">${dir} ~${abs} lbs / week</div>
+            <div class="muted sm">Avg intake ${fmt(dp.avg)} kcal · ${Math.abs(dp.dailyDelta)} kcal ${dp.dailyDelta<0?'deficit':'surplus'}/day</div>
+            <div class="muted sm">${dp.days} days of data · ~${(Math.abs(dp.lbsPerWeek)*4.33).toFixed(1)} lbs/month</div>
+          </div>
+        </div></div>`;})()}
 
     <div class="card fade">
       <div class="row" style="justify-content:space-between;margin-bottom:10px">
@@ -835,6 +849,18 @@ function renderFoodPage(q){
           <div style="font-size:13px;font-weight:600">AI Ideas</div>
         </button>
       </div>
+      ${S.recipes.length?`<div style="margin-bottom:10px">
+        <div class="food-section-lbl" style="margin-top:0;margin-bottom:6px">My recipes</div>
+        <div style="display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px">
+          ${S.recipes.map(r=>`<button onclick="logRecipe('${r.id}')" style="flex:0 0 auto;background:var(--surf);border:1.5px solid var(--surfH);border-radius:14px;padding:10px 14px;cursor:pointer;text-align:left;min-width:120px">
+            <div style="font-size:13px;font-weight:700;margin-bottom:2px">📖 ${r.name}</div>
+            <div style="font-size:11px;color:var(--accent)">${r.kcal} kcal · P${r.p}g</div>
+          </button>`).join('')}
+          <button onclick="openRecipes()" style="flex:0 0 auto;background:none;border:1.5px dashed var(--surfH);border-radius:14px;padding:10px 14px;cursor:pointer;color:var(--muted);font-size:12px;min-width:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+            <i class="ti ti-plus" style="font-size:18px"></i>New
+          </button>
+        </div>
+      </div>`:`<button onclick="openRecipeBuilder()" style="width:100%;background:none;border:1.5px dashed var(--surfH);border-radius:14px;padding:10px;cursor:pointer;color:var(--muted);font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:center"><i class="ti ti-chef-hat" style="font-size:18px"></i>Create a recipe or meal combo</button>`}
       <div class="food-search-bar" style="margin-bottom:6px">
         <i class="ti ti-search"></i>
         <input id="foodQ" class="in" placeholder="Search Oikos, protein powder, a brand…" value="${q.replace(/"/g,'&quot;')}" oninput="renderFoodPage(this.value)">
@@ -1526,6 +1552,9 @@ function renderMore(){
     ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
     ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('📖','My recipes',S.recipes.length?S.recipes.length+' saved recipes':'Create meal combos & save them','openRecipes()')}
+    ${row('📏','Body measurements',S.measHistory&&Object.keys(S.measHistory).length?'Last: '+Object.keys(S.measHistory).sort().slice(-1)[0]:'Track waist, arms, chest over time','logMeasurement()')}
+    ${row('📥','Export today\'s log','Download as CSV file','exportCSV()')}
     ${row('🧪','Full micronutrients','Fiber, vitamins, minerals, sodium','openMicros()')}
     ${row('🔒','Vault privacy lock',S.lock.enabled?'PIN protected':'Disabled','setupVaultLock()')}
     <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv6');localStorage.removeItem('mv_goal');GOAL={cal:2200,p:176,c:200,f:61};S=load();renderAll();toast('Reset');}" style="cursor:pointer">
@@ -1534,6 +1563,103 @@ function renderMore(){
         <div style="flex:1"><div style="font-weight:600">Reset demo data</div><div class="muted sm">Start fresh with seed data</div></div></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px;line-height:1.6">MacroVault v2.0<br>Log food · Track macros · Build your body 💪</div>`;
 }
+
+// ---- Recipe builder ----
+window._recipe={name:'',ingredients:[]};
+window.openRecipeBuilder=()=>{
+  window._recipe={name:'',ingredients:[]};renderRecipeBuilder();};
+window.renderRecipeBuilder=()=>{
+  const r=window._recipe;
+  const total=r.ingredients.reduce((t,x)=>({kcal:t.kcal+x.f.kcal*x.qty,p:t.p+x.f.p*x.qty,c:t.c+x.f.c*x.qty,f:t.f+x.f.f*x.qty}),{kcal:0,p:0,c:0,f:0});
+  openSheet(`<h3>New recipe</h3>
+    <input id="rName" class="in" placeholder="Recipe name (e.g. My protein bowl)" value="${r.name}" oninput="window._recipe.name=this.value" style="margin-bottom:12px">
+    ${r.ingredients.length?`<div style="margin-bottom:10px">${r.ingredients.map((x,i)=>
+      `<div class="row" style="padding:7px 2px;border-bottom:.5px solid var(--surfH);font-size:13px">
+        <span style="flex:1">${foodEmoji(x.f.name)} ${x.f.name}</span>
+        <span class="muted" style="margin-right:8px">${x.qty}× · ${Math.round(x.f.kcal*x.qty)} kcal</span>
+        <button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px" onclick="window._recipe.ingredients.splice(${i},1);renderRecipeBuilder()">×</button>
+      </div>`).join('')}
+      <div style="padding:10px 2px;font-size:13px;font-weight:700">Total: ${Math.round(total.kcal)} kcal · P${Math.round(total.p)}g C${Math.round(total.c)}g F${Math.round(total.f)}g</div>
+    </div>`:'<div class="muted sm" style="margin-bottom:10px">Search and add ingredients below.</div>'}
+    <input class="in" placeholder="Search ingredient…" oninput="recipeSearch(this.value)" style="margin-bottom:8px">
+    <div id="rSearch" style="max-height:180px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" style="flex:1" onclick="saveRecipe()">Save recipe</button>
+      <button class="ghost" style="width:auto;padding:14px 16px" onclick="closeSheet()">Cancel</button>
+    </div>`);};
+window.recipeSearch=q=>{const box=document.getElementById('rSearch');if(!box)return;
+  if(!q.trim()){box.innerHTML='';return;}
+  const res=DB.map(G).filter(f=>f.name.toLowerCase().includes(q.toLowerCase())).slice(0,8);
+  box.innerHTML=res.map(f=>`<div class="frow" style="padding:8px 4px" onclick="addToRecipe('${f.name.replace(/'/g,'\\'')}')">
+    <span style="margin-right:8px">${foodEmoji(f.name)}</span><span style="flex:1;font-size:14px">${f.name}</span>
+    <span class="muted sm">${f.kcal} cal</span></div>`).join('');};
+window.addToRecipe=name=>{const f=G(DB.find(d=>d[0]===name)||DB[0]);
+  window._recipe.ingredients.push({f,qty:1});renderRecipeBuilder();};
+window.saveRecipe=()=>{const r=window._recipe;if(!r.name.trim()){toast('Enter a recipe name');return;}
+  if(!r.ingredients.length){toast('Add at least one ingredient');return;}
+  const total=r.ingredients.reduce((t,x)=>({kcal:t.kcal+x.f.kcal*x.qty,p:t.p+x.f.p*x.qty,c:t.c+x.f.c*x.qty,f:t.f+x.f.f*x.qty}),{kcal:0,p:0,c:0,f:0});
+  const recipe={id:'r'+Date.now(),name:r.name.trim(),ingredients:r.ingredients,
+    kcal:Math.round(total.kcal),p:Math.round(total.p),c:Math.round(total.c),f:Math.round(total.f),serv:'1 serving'};
+  S.recipes.unshift(recipe);save();closeSheet();toast('Recipe saved: '+recipe.name);};
+window.logRecipe=(id,slot)=>{const rec=S.recipes.find(r=>r.id===id);if(!rec)return;
+  const t=timeNow();
+  S.meals[slot||activeSlot].push({name:rec.name,brand:'recipe',kcal:rec.kcal,p:rec.p,c:rec.c,f:rec.f,qty:1,m:{},time:t});
+  const k=fkey({name:rec.name,brand:'recipe'});S.usage[k]=S.usage[k]||{f:{name:rec.name,brand:'recipe',kcal:rec.kcal,p:rec.p,c:rec.c,f:rec.f,serv:'1 serving'},count:0,last:0,fav:false};
+  S.usage[k].count++;S.usage[k].last=Date.now();save();afterLog();toast('Logged '+rec.name);};
+window.openRecipes=()=>{
+  if(!S.recipes.length){openRecipeBuilder();return;}
+  openSheet(`<h3>My recipes</h3>
+    <button class="btn" style="margin-bottom:12px" onclick="closeSheet();openRecipeBuilder()"><i class="ti ti-plus"></i> New recipe</button>
+    ${S.recipes.map(r=>`<div class="card" style="margin-bottom:8px">
+      <div class="row" style="justify-content:space-between">
+        <div><div style="font-weight:700">${r.name}</div>
+          <div class="muted sm">${r.kcal} kcal · P${r.p}g · ${r.ingredients.length} ingredients</div></div>
+        <div class="row" style="gap:6px">
+          <button class="btn" style="padding:7px 12px;font-size:12px" onclick="closeSheet();logRecipe('${r.id}')">Log</button>
+          <button class="ghost" style="padding:7px 10px;font-size:12px;width:auto" onclick="S.recipes=S.recipes.filter(x=>x.id!=='${r.id}');save();openRecipes()">×</button>
+        </div></div></div>`).join('')}`);};
+
+// ---- Projected weight change from deficit ----
+function deficitProjection(){
+  const days=Object.keys(S.history).filter(d=>S.history[d].logged).length;
+  if(days<3)return null;
+  const avg=Math.round(Object.values(S.history).filter(h=>h.logged).reduce((s,h)=>s+h.kcal,0)/days);
+  const dailyDelta=avg-GOAL.cal;
+  const lbsPerWeek=dailyDelta*7/3500;
+  return{avg,dailyDelta,lbsPerWeek,days};}
+
+// ---- Body measurement history ----
+window.logMeasurement=()=>{
+  const m=S.meas;
+  openSheet(`<h3>📏 Body measurements</h3>
+    <div class="muted sm" style="margin-bottom:12px">Track changes over time. All in cm (or inches if you prefer — just be consistent).</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div><div class="muted sm">Waist</div><input id="mWaist" class="in" type="number" step="0.1" value="${m.waist||''}"></div>
+      <div><div class="muted sm">Hips</div><input id="mHips" class="in" type="number" step="0.1" value="${m.hips||''}"></div>
+      <div><div class="muted sm">Neck</div><input id="mNeck" class="in" type="number" step="0.1" value="${m.neck||''}"></div>
+      <div><div class="muted sm">Chest</div><input id="mChest" class="in" type="number" step="0.1" value="${m.chest||''}"></div>
+      <div><div class="muted sm">Left arm</div><input id="mArm" class="in" type="number" step="0.1" value="${m.arm||''}"></div>
+      <div><div class="muted sm">Thigh</div><input id="mThigh" class="in" type="number" step="0.1" value="${m.thigh||''}"></div>
+    </div>
+    <button class="btn" onclick="saveMeasurements()">Save measurements</button>
+    ${S.measHistory&&Object.keys(S.measHistory).length?`<div class="muted sm" style="margin-top:12px">Last logged: ${Object.keys(S.measHistory).sort().slice(-1)[0]}</div>`:''}`);};
+window.saveMeasurements=()=>{
+  const get=id=>{const e=document.getElementById(id);return e&&e.value?parseFloat(e.value):null;};
+  const waist=get('mWaist'),hips=get('mHips'),neck=get('mNeck'),chest=get('mChest'),arm=get('mArm'),thigh=get('mThigh');
+  S.meas={...S.meas,waist:waist||S.meas.waist,hips:hips||S.meas.hips,neck:neck||S.meas.neck,chest,arm,thigh};
+  S.measHistory=S.measHistory||{};
+  S.measHistory[today()]={waist,hips,neck,chest,arm,thigh};
+  save();closeSheet();renderProgress();toast('Measurements saved for '+today());};
+
+// ---- Export CSV ----
+window.exportCSV=()=>{
+  const rows=[['Date','Meal','Food','Brand','Qty','Calories','Protein (g)','Carbs (g)','Fat (g)','Time']];
+  const td=today();
+  SLOTS.forEach(([k,n])=>{S.meals[k].forEach(x=>{rows.push([td,n,x.name,x.brand||'',x.qty,Math.round(x.kcal*x.qty),Math.round(x.p*x.qty),Math.round(x.c*x.qty),Math.round(x.f*x.qty),x.time||'']);});});
+  const csv=rows.map(r=>r.map(v=>'"'+(String(v).replace(/"/g,'""'))+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='macrovault-'+td+'.csv';a.click();URL.revokeObjectURL(url);
+  toast('Today\'s log exported as CSV');};
 
 // ---- AI "What should I eat?" ----
 window.aiSuggest=async()=>{
