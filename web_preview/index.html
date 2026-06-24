@@ -196,15 +196,48 @@ const currentSlot=()=>{const h=new Date().getHours();return h<11?'breakfast':h<1
 
 let GOAL=Object.assign({cal:2200,p:176,c:200,f:61},JSON.parse(localStorage.getItem('mv_goal')||'{}'));
 const SLOTS=[['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snack','Snacks']];
+const SLOT_META={breakfast:{emoji:'🌅',color:'#F6B73C'},lunch:{emoji:'☀️',color:'#38BDF8'},dinner:{emoji:'🌙',color:'#A78BFA'},snack:{emoji:'⚡',color:'#BEF264'}};
 const DB=[
-  ['Chicken breast','100 g',165,31,0,3.6],['White rice','1 cup',205,4,45,0.4],
-  ['Greek yogurt','170 g',100,17,6,0.7],['Banana','1 medium',105,1,27,0.4],
-  ['Egg','1 large',72,6,0.4,5],['Salmon fillet','100 g',208,20,0,13],
-  ['Oats','40 g',150,5,27,3],['Protein shake','1 scoop',160,30,5,2.5],
+  // Proteins
+  ['Chicken breast','100 g',165,31,0,3.6],['Salmon fillet','100 g',208,20,0,13],
+  ['Ground beef 90/10','100 g',176,20,0,10],['Egg','1 large',72,6,0.4,5],
+  ['Tuna (canned)','85 g',109,25,0,2.5],['Turkey breast','100 g',135,30,0,1],
+  ['Shrimp','100 g',99,24,0,0.3],['Pork tenderloin','100 g',143,26,0,3.5],
+  ['Tilapia','100 g',96,20,0,2],['Protein shake','1 scoop',160,30,5,2.5],
+  ['Egg whites','3 whites',51,11,0.5,0.2],['Deli turkey','56 g',60,12,2,0.5],
+  // Dairy
+  ['Greek yogurt','170 g',100,17,6,0.7],['Cottage cheese','100 g',98,11,3.4,4.3],
+  ['Milk (2%)','240 ml',122,8,12,5],['Cheddar cheese','28 g',113,7,0.4,9],
+  ['Mozzarella','28 g',85,6,0.6,6],['String cheese','28 g',80,7,1,5],
+  // Grains & Carbs
+  ['White rice','1 cup',205,4,45,0.4],['Oats','40 g',150,5,27,3],
+  ['Whole wheat bread','1 slice',80,4,15,1],['White bread','1 slice',75,3,14,1],
+  ['Pasta','100 g dry',350,12,70,1.5],['Quinoa','185 g cooked',222,8,39,3.5],
+  ['Sweet potato','1 medium',112,2,26,0.1],['Brown rice','1 cup',215,5,45,1.7],
+  ['Bagel','1 medium',270,10,53,1.5],['Tortilla (flour)','1 medium',130,3,24,3],
+  ['Granola bar','40 g',190,4,28,7],['Rice cake','9 g',35,0.7,7.3,0.3],
+  // Fruits
+  ['Banana','1 medium',105,1,27,0.4],['Apple','1 medium',95,0.5,25,0.3],
+  ['Orange','1 medium',62,1.2,15,0.2],['Blueberries','1 cup',84,1.1,21,0.5],
+  ['Strawberries','1 cup',49,1,12,0.5],['Grapes','1 cup',104,1.1,27,0.2],
+  ['Mango','1 cup',107,0.8,28,0.5],['Avocado','1/2 fruit',120,1.5,6,11],
+  // Vegetables
+  ['Broccoli','1 cup',55,3.7,11,0.6],['Spinach','1 cup raw',7,0.9,1.1,0.1],
+  ['Baby carrots','85 g',30,0.6,7,0.1],['Cucumber','1 cup',16,0.7,4,0.1],
+  ['Bell pepper','1 medium',31,1,6,0.3],['Celery','1 cup',16,0.7,3,0.2],
+  ['Edamame','1 cup',189,17,15,8],['Cherry tomatoes','1 cup',27,1.3,6,0.3],
+  // Fats & Nuts
   ['Almonds','28 g',164,6,6,14],['Olive oil','1 tbsp',119,0,0,14],
-  ['Broccoli','1 cup',55,3.7,11,0.6],['Ground beef 90/10','100 g',176,20,0,10],
-  ['Apple','1 medium',95,0.5,25,0.3],['Peanut butter','1 tbsp',94,4,3,8],
-  ['Sweet potato','1 medium',112,2,26,0.1],['Cottage cheese','100 g',98,11,3.4,4.3],
+  ['Peanut butter','1 tbsp',94,4,3,8],['Almond butter','1 tbsp',98,3.4,3,9],
+  ['Walnuts','28 g',185,4.3,3.9,18.5],['Cashews','28 g',157,5.2,8.6,12.4],
+  ['Coconut oil','1 tbsp',117,0,0,13.6],['Chia seeds','1 tbsp',58,2,5,3.7],
+  // Snacks & Other
+  ['Dark chocolate 70%','28 g',170,2,13,12],['Hummus','2 tbsp',50,2.4,4.8,3],
+  ['Popcorn (plain)','3 cups',93,3,18.6,1.1],['Tortilla chips','28 g',140,2,19,7],
+  ['Protein bar','1 bar',200,20,22,6],['Trail mix','28 g',131,3.8,12.7,8.3],
+  // Drinks
+  ['Coffee (black)','240 ml',2,0.3,0,0],['Orange juice','240 ml',112,1.7,26,0.5],
+  ['Almond milk','240 ml',30,1,1,2.5],['Coconut water','240 ml',46,1.7,8.9,0.5],
 ];
 const METRICS=[
   {key:'bench',name:'Bench press 1RM',unit:'lbs',hi:true,color:'#BEF264'},
@@ -538,12 +571,16 @@ function renderToday(){
             </div>
             <button class="diary-del" onclick="event.stopPropagation();delItem('${k}',${i})"><i class="ti ti-x"></i></button>
           </div>`).join('');
+        const meta=SLOT_META[k]||{emoji:'🍽️',color:'#BEF264'};
         return `<div class="diary-meal-hdr">
-          <div onclick="openFoodPage('${k}')" style="cursor:pointer;flex:1">
-            <span class="diary-meal-name">${n}</span>
-            ${kc?`<span class="diary-meal-kcal">${fmt(kc)} kcal</span>`:'<span class="diary-meal-kcal">tap to expand</span>'}
+          <div onclick="openFoodPage('${k}')" style="cursor:pointer;flex:1;display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">${meta.emoji}</span>
+            <div>
+              <span class="diary-meal-name" style="color:${meta.color}">${n}</span>
+              ${kc?`<span class="diary-meal-kcal">${fmt(kc)} kcal</span>`:'<span class="diary-meal-kcal">tap to add food</span>'}
+            </div>
           </div>
-          <button class="diary-add" onclick="addFood('${k}')"><i class="ti ti-plus"></i></button>
+          <button class="diary-add" onclick="addFood('${k}')" style="border-color:${meta.color}22;color:${meta.color}"><i class="ti ti-plus"></i></button>
         </div>${foodRows}`;}).join('')}
     </div>
 
@@ -710,7 +747,10 @@ window.closeFoodPage=()=>{
 function renderFoodPage(q){
   DISPLAY=[];
   const slotName=SLOTS.find(s=>s[0]===activeSlot)[1];
-  const tabs=SLOTS.map(([k,n])=>`<button class="meal-tab ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderFoodPage(document.getElementById('foodQ')?.value||'')">${n}</button>`).join('');
+  const tabs=SLOTS.map(([k,n])=>{const m=SLOT_META[k]||{};const kc=mealKcal(k);
+    return `<button class="meal-tab ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';$('#hTitle').textContent='Add food';renderFoodPage(document.getElementById('foodQ')?.value||'')" style="${k===activeSlot?'color:'+m.color+';border-bottom-color:'+m.color:''}">
+      ${m.emoji||''} ${n}${kc?`<span style="font-size:11px;margin-left:4px;opacity:.7">${fmt(kc)}</span>`:''}
+    </button>`;}).join('');
 
   // Snap photo gallery — show all snaps taken this session (up to 6)
   const gallery=window._snapHistory||[];
@@ -762,9 +802,19 @@ function renderFoodPage(q){
     list=(rec.length?`<div class="food-section-lbl">${slotLabel}</div>`+rec.map(rowHtml).join(''):'')
       +`<div class="food-section-lbl">All foods</div>`+DB.map(G).map(rowHtml).join('');
   }
+  const tt=totals();const burned2=S.exercise[today()]||0;
+  const remCal=Math.max(0,GOAL.cal+burned2-tt.kcal),remP=Math.max(0,GOAL.p-tt.p);
+  const budgetBar=`<div style="display:flex;gap:8px;margin-bottom:14px;padding:10px 12px;background:var(--surfH);border-radius:14px;align-items:center">
+    <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:${remCal<200?'#F6735A':'var(--accent)'}">${fmt(remCal)}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">kcal left</div></div>
+    <div style="width:.5px;height:32px;background:var(--bg)"></div>
+    <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#2DD4BF">${Math.round(remP)}g</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">protein left</div></div>
+    <div style="width:.5px;height:32px;background:var(--bg)"></div>
+    <div style="flex:1;text-align:center"><div style="font-size:18px;font-weight:800;color:#F6B73C">${Math.round(Math.max(0,GOAL.c-tt.c))}g</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">carbs left</div></div>
+  </div>`;
   $('#view-addfood').innerHTML=`
     <div class="meal-tabs">${tabs}</div>
     <div style="padding:14px 16px 100px">
+      ${budgetBar}
       ${snapHtml}
       ${loggedHtml}
       <div style="display:flex;gap:10px;margin-bottom:10px">
@@ -779,6 +829,10 @@ function renderFoodPage(q){
         <button onclick="quickAdd()" style="flex:1;background:var(--surf);border:1.5px solid var(--surfH);border-radius:18px;padding:15px 8px 12px;cursor:pointer;text-align:center">
           <i class="ti ti-bolt" style="font-size:26px;display:block;margin-bottom:6px;color:var(--accent)"></i>
           <div style="font-size:13px;font-weight:600">Quick Add</div>
+        </button>
+        <button onclick="aiSuggest()" style="flex:1;background:var(--surf);border:1.5px solid var(--surfH);border-radius:18px;padding:15px 8px 12px;cursor:pointer;text-align:center">
+          <i class="ti ti-sparkles" style="font-size:26px;display:block;margin-bottom:6px;color:#A78BFA"></i>
+          <div style="font-size:13px;font-weight:600">AI Ideas</div>
         </button>
       </div>
       <div class="food-search-bar" style="margin-bottom:6px">
@@ -846,7 +900,8 @@ function rowHtml(f){
       <div class="frow-brand">${brand}</div>
     </div>
     <div style="text-align:right;flex-shrink:0;margin-right:6px">
-      <div class="frow-kcal">${f.kcal} cals</div>
+      <div class="frow-kcal">${f.kcal} cal</div>
+      <div style="font-size:11px;color:#2DD4BF;font-weight:600;margin-top:1px">${f.p}g protein</div>
       <div class="frow-serv">${f.serv}</div>
     </div>
     <button onclick="event.stopPropagation();toggleFav(${i})" style="background:none;border:none;font-size:20px;cursor:pointer;padding:6px;line-height:1;color:${fav?'#F6B73C':'var(--surfH)'};flex-shrink:0">${fav?'★':'☆'}</button>
@@ -967,9 +1022,36 @@ function renderProgress(){
         <div class="sm" style="color:${good?'#BEF264':'#8A949C'}">${last}${d.unit?' '+d.unit:''} · ${delta>=0?'+':''}${(+delta.toFixed(1))} since start</div></div>
       ${spark(raw,col)}<i class="ti ti-chevron-right muted"></i></div>`;}).join('');
 
+  // 30-day calorie history
+  const hist30=(()=>{const a=[];for(let i=29;i>=0;i--){const d=dayKey(-i);const h=S.history[d];a.push({d,kcal:h?h.kcal:0,logged:h?h.logged:false});}return a;})();
+  const h30max=Math.max(GOAL.cal*1.2,...hist30.map(x=>x.kcal),1);
+  const barW=Math.floor(300/30);
+  const h30bars=hist30.map((x,i)=>{const h=Math.round(x.kcal/h30max*100);const isT=i===29;
+    const col=!x.logged?'#1C2530':x.kcal>GOAL.cal?'#F6735A':isT?'#BEF264':'#2DD4BF';
+    return `<rect x="${i*barW}" y="${100-h}" width="${barW-1}" height="${h}" fill="${col}" rx="2"/>`;}).join('');
+  const goalLine=Math.round((1-GOAL.cal/h30max)*100);
+  const logged30=hist30.filter(x=>x.logged).length;
+  const avg30=logged30?Math.round(hist30.filter(x=>x.logged).reduce((s,x)=>s+x.kcal,0)/logged30):0;
+
   $('#view-progress').innerHTML=`
     <div class="card fade">
-      <div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="margin:0">Progress</h3>
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h3 style="margin:0">30-day calories</h3>
+        <span class="muted sm">${logged30} days · avg ${fmt(avg30)}</span></div>
+      <svg width="100%" height="100" viewBox="0 0 300 100">
+        <line x1="0" y1="${goalLine}" x2="300" y2="${goalLine}" stroke="#BEF26444" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="302" y="${goalLine+4}" fill="#BEF26488" font-size="8">goal</text>
+        ${h30bars}
+      </svg>
+      <div style="display:flex;gap:14px;margin-top:6px;font-size:11px">
+        <span><i style="display:inline-block;width:8px;height:8px;background:#2DD4BF;border-radius:2px;margin-right:4px"></i>Under goal</span>
+        <span><i style="display:inline-block;width:8px;height:8px;background:#F6735A;border-radius:2px;margin-right:4px"></i>Over goal</span>
+        <span><i style="display:inline-block;width:8px;height:8px;background:#BEF264;border-radius:2px;margin-right:4px"></i>Today</span>
+      </div>
+    </div>
+
+    <div class="card fade">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="margin:0">Strength & Body</h3>
         ${tr.length?`<span class="muted sm">${trend}/${tr.length} trending right</span>`:''}</div>
       <div style="margin-bottom:8px">${rangeBtns}</div>
       <svg width="100%" height="160" viewBox="0 0 300 160" role="img" aria-label="overlaid progress">${grid}${chart}</svg>
@@ -1452,6 +1534,27 @@ function renderMore(){
         <div style="flex:1"><div style="font-weight:600">Reset demo data</div><div class="muted sm">Start fresh with seed data</div></div></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px;line-height:1.6">MacroVault v2.0<br>Log food · Track macros · Build your body 💪</div>`;
 }
+
+// ---- AI "What should I eat?" ----
+window.aiSuggest=async()=>{
+  const key=localStorage.getItem('anthropicKey');
+  if(!key){openKeySetup();return;}
+  const t=totals(),rem={cal:Math.max(0,GOAL.cal-t.kcal),p:Math.max(0,GOAL.p-t.p),c:Math.max(0,GOAL.c-t.c),f:Math.max(0,GOAL.f-t.f)};
+  const slot=SLOTS.find(s=>s[0]===activeSlot)?.[1]||'meal';
+  showLoading('Claude is thinking…');
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:aiModel(),max_tokens:300,
+        messages:[{role:'user',content:`I'm planning my ${slot}. Remaining budget today: ${rem.cal} kcal, ${rem.p}g protein, ${rem.c}g carbs, ${rem.f}g fat. Suggest 3 specific meal ideas that fit. Be brief — just a name and 1 sentence. No preamble.`}]})});
+    hideLoading();if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();const txt=(j.content||[]).find(b=>b.type==='text');
+    if(!txt)throw new Error('no response');
+    openSheet(`<h3>🤖 ${slot} ideas</h3>
+      <div class="muted sm" style="margin-bottom:10px">Based on your remaining ${fmt(rem.cal)} kcal · ${rem.p}g protein today</div>
+      <div style="font-size:14px;line-height:1.7;white-space:pre-wrap">${txt.text.replace(/</g,'&lt;')}</div>
+      <button class="btn" style="margin-top:14px" onclick="closeSheet()">Got it</button>`);
+  }catch(e){hideLoading();toast('AI error: '+e.message);}};
 
 // ---- Daily notes ----
 window.openNotes=()=>{const cur=S.notes[today()]||'';
