@@ -1264,7 +1264,27 @@ function renderProgress(){
         <div class="row" style="gap:7px;align-items:flex-end">${stpBars}</div>
         <div class="muted sm" style="margin-top:6px">Green ≥10k steps · Goal: 10,000/day</div>
         <button class="ghost" style="margin-top:10px;font-size:13px" onclick="logSteps()"><i class="ti ti-shoe"></i> Log steps</button>
-      </div>`;
+      </div>
+      ${(()=>{const wkend=[],wkday=[];
+        for(let i=1;i<=30;i++){const d=dayKey(-i);const h=S.history[d];if(!h||!h.logged)continue;
+          const dow=new Date(d+'T12:00:00').getDay();
+          (dow===0||dow===6?wkend:wkday).push(h.kcal);}
+        if(wkend.length<2&&wkday.length<2)return'';
+        const avg=arr=>arr.length?Math.round(arr.reduce((s,x)=>s+x,0)/arr.length):0;
+        const we=avg(wkend),wd=avg(wkday),diff=we-wd;
+        const col=Math.abs(diff)>200?'#F6B73C':'#BEF264';
+        return`<div class="card fade" style="margin-top:10px">
+          <h3 style="margin:0 0 10px">📅 Weekend vs weekday (30d)</h3>
+          <div class="row" style="gap:12px">
+            <div style="flex:1;text-align:center;padding:12px;background:var(--surfH);border-radius:12px">
+              <div style="font-size:22px;font-weight:800;color:#2DD4BF">${fmt(wd)}</div>
+              <div class="muted sm">Avg weekday</div></div>
+            <div style="flex:1;text-align:center;padding:12px;background:var(--surfH);border-radius:12px">
+              <div style="font-size:22px;font-weight:800;color:#F6B73C">${fmt(we)}</div>
+              <div class="muted sm">Avg weekend</div></div>
+          </div>
+          <div class="muted sm" style="margin-top:10px;text-align:center;color:${col}">${Math.abs(diff)>50?(diff>0?'You eat '+fmt(diff)+' more cal on weekends':'You eat '+fmt(-diff)+' fewer cal on weekends'):'Weekend and weekday intake is consistent ✓'}</div>
+        </div>`;})()}`;
     })()}`;
 }
 window.pickLift=()=>{openSheet(`<h3>Log a lift</h3>${['bench','squat','deadlift'].map(k=>{const m=METRICS.find(x=>x.key===k);
@@ -1740,6 +1760,8 @@ function renderMore(){
     ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
     ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('🏃','Activity calculator','Calculate calories burned for any exercise','openActivityCalc()')}
+    ${row('⚡','Goal presets','Cutting · Bulking · Maintenance · High protein','openGoalPresets()')}
     ${row('🧑‍⚕️','Nutrition coach chat','Ask AI about your food, macros, and goals','openNutriChat()')}
     ${row('⏱️','Intermittent fasting',S.fasting?.startTs?'Fast in progress — tap to manage':'Set up a fasting window (16:8, 18:6…)','openFasting()')}
     ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
@@ -1844,6 +1866,58 @@ function fastingCard(){const f=S.fasting;if(!f.startTs)return'';
     <div class="bar" style="height:6px"><i style="width:${pct}%;background:${col}"></i></div>
     <div class="muted sm" style="margin-top:4px">${Math.round(pct)}% of ${f.window}h fast · tap to manage</div>
   </div>`;}
+
+// ---- Activity calorie calculator ----
+const ACTIVITIES=[
+  {n:'Running',e:'🏃',met:9.8},{n:'Cycling',e:'🚴',met:7.5},{n:'Swimming',e:'🏊',met:8.0},
+  {n:'Walking',e:'🚶',met:3.5},{n:'Weight lifting',e:'🏋️',met:5.0},{n:'HIIT',e:'⚡',met:10.0},
+  {n:'Yoga',e:'🧘',met:2.5},{n:'Jump rope',e:'🪢',met:11.0},{n:'Rowing',e:'🚣',met:7.0},
+  {n:'Elliptical',e:'🔄',met:5.5},{n:'Basketball',e:'🏀',met:6.5},{n:'Soccer',e:'⚽',met:7.0},
+  {n:'Tennis',e:'🎾',met:7.3},{n:'Hiking',e:'🥾',met:5.3},{n:'Dance',e:'💃',met:5.0}];
+window.openActivityCalc=()=>{
+  const wt=S.weight.length?S.weight[S.weight.length-1][1]:154;
+  openSheet(`<h3>🏃 Activity calorie calculator</h3>
+    <div class="muted sm" style="margin-bottom:12px">Based on weight: ${wt} lbs. <span class="link" onclick="logWeight();closeSheet()">Update</span></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      ${ACTIVITIES.map(a=>`<button class="ghost" onclick="calcActivity('${a.n}',${a.met},${wt})" style="flex-direction:column;align-items:center;padding:10px 4px;gap:4px">
+        <span style="font-size:22px">${a.e}</span><span style="font-size:11px;text-align:center">${a.n}</span></button>`).join('')}
+    </div>`);};
+window.calcActivity=(name,met,wt)=>{
+  const mins=parseInt(prompt(`${name} — how many minutes?`,'30'));if(!mins||mins<=0)return;
+  const kcal=Math.round(met*(wt*0.453592)/60*mins);
+  openSheet(`<h3>🔥 ${name} · ${mins} min</h3>
+    <div style="text-align:center;padding:20px">
+      <div style="font-size:56px;font-weight:900;color:#F6735A">${kcal}</div>
+      <div class="muted sm">calories burned (estimated)</div></div>
+    <button class="btn" onclick="addExercise(${kcal});closeSheet()">Log to today</button>
+    <button class="ghost" style="margin-top:8px" onclick="openActivityCalc()">← Back</button>`);};
+
+// ---- Macro goal presets ----
+window.openGoalPresets=()=>{
+  const wt=S.weight.length?S.weight[S.weight.length-1][1]:180;
+  const lbm=wt*(1-(S.metrics.bodyfat?.slice(-1)?.[0]?.[1]||20)/100);
+  const presets=[
+    {n:'🔥 Cutting',d:'Lose fat while preserving muscle',
+      cal:Math.round(GOAL.cal*0.8),p:Math.round(lbm),c:Math.round(GOAL.cal*0.8*0.35/4),f:Math.round(GOAL.cal*0.8*0.25/9)},
+    {n:'💪 Bulking',d:'Gain muscle with controlled calories',
+      cal:Math.round(GOAL.cal*1.15),p:Math.round(lbm*0.9),c:Math.round(GOAL.cal*1.15*0.45/4),f:Math.round(GOAL.cal*1.15*0.25/9)},
+    {n:'⚖️ Maintenance',d:'Maintain current weight and composition',
+      cal:GOAL.cal,p:Math.round(lbm*0.8),c:Math.round(GOAL.cal*0.4/4),f:Math.round(GOAL.cal*0.3/9)},
+    {n:'🥩 High protein',d:'Maximize muscle retention and satiety',
+      cal:GOAL.cal,p:Math.round(lbm),c:Math.round(GOAL.cal*0.3/4),f:Math.round(GOAL.cal*0.25/9)},
+  ];
+  openSheet(`<h3>🎯 Goal presets</h3>
+    <div class="muted sm" style="margin-bottom:12px">Quick-set macros based on your body weight.</div>
+    ${presets.map(p=>`<div class="card" style="margin-bottom:10px;cursor:pointer" onclick="applyPreset(${p.cal},${p.p},${p.c},${p.f})">
+      <div style="font-size:16px;font-weight:700;margin-bottom:2px">${p.n}</div>
+      <div class="muted sm" style="margin-bottom:8px">${p.d}</div>
+      <div class="row" style="gap:12px;font-size:12px">
+        <span><b style="color:var(--accent)">${p.cal}</b> cal</span>
+        <span><b style="color:#2DD4BF">${p.p}g</b> protein</span>
+        <span><b style="color:#F6B73C">${p.c}g</b> carbs</span>
+        <span><b style="color:#A78BFA">${p.f}g</b> fat</span>
+      </div></div>`).join('')}`);};
+window.applyPreset=(cal,p,c,f)=>{GOAL=Object.assign(GOAL,{cal,p,c,f});localStorage.setItem('mv_goal',JSON.stringify(GOAL));save();renderAll();closeSheet();toast('Goals updated!');};
 
 // ---- Nutrition grade ----
 function nutritionGrade(){
