@@ -583,6 +583,7 @@ function renderToday(){
     </div>`:''}
 
     ${isToday?coachCard:''}
+    ${isToday?fastingCard():''}
 
     ${isToday&&quick?`<div class="fade" style="margin:6px 2px 12px">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
@@ -1102,11 +1103,18 @@ function renderProgress(){
     const last=raw[raw.length-1][1],first=raw[0][1],delta=last-first,good=(delta>0)===d.hi;
     const isPR=d.hi&&raw.length>1&&last>=Math.max(...raw.map(x=>x[1]));
     const col=d.key==='weight'?'#2DD4BF':colorFor(d.key);
-    return `<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:10px;cursor:pointer" onclick="metricDetail('${d.key}')">
-      <div style="width:6px;height:42px;border-radius:4px;background:${col}"></div>
-      <div style="flex:1"><div style="display:flex;align-items:center;gap:6px">${d.name}${isPR?'<span style="background:#BEF264;color:#0E1217;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px">PR</span>':''}</div>
-        <div class="sm" style="color:${good?'#BEF264':'#8A949C'}">${last}${d.unit?' '+d.unit:''} · ${delta>=0?'+':''}${(+delta.toFixed(1))} since start</div></div>
-      ${spark(raw,col)}<i class="ti ti-chevron-right muted"></i></div>`;}).join('');
+    const twLine=d.key==='weight'&&GOAL.targetWeight?(()=>{
+      const tw=GOAL.targetWeight;const start=raw[0][1];const range=Math.abs(start-tw)||1;
+      const prog=Math.min(100,Math.max(0,Math.abs(start-last)/range*100));
+      const going=start>tw?'↓':'↑';const left=Math.abs(tw-last).toFixed(1);
+      return `<div style="margin-top:6px"><div class="row" style="justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px"><span>Goal: ${tw} lbs</span><span>${going} ${left} lbs to go</span></div><div class="bar" style="height:5px"><i style="width:${prog}%;background:#BEF264"></i></div></div>`;})():'';
+    return `<div class="card" style="margin-bottom:10px;cursor:pointer" onclick="metricDetail('${d.key}')">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:6px;height:42px;border-radius:4px;background:${col}"></div>
+        <div style="flex:1"><div style="display:flex;align-items:center;gap:6px">${d.name}${isPR?'<span style="background:#BEF264;color:#0E1217;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px">PR</span>':''}</div>
+          <div class="sm" style="color:${good?'#BEF264':'#8A949C'}">${last}${d.unit?' '+d.unit:''} · ${delta>=0?'+':''}${(+delta.toFixed(1))} since start</div></div>
+        ${spark(raw,col)}<i class="ti ti-chevron-right muted"></i></div>
+      ${twLine}</div>`;}).join('');
 
   // 30-day calorie history
   const hist30=(()=>{const a=[];for(let i=29;i>=0;i--){const d=dayKey(-i);const h=S.history[d];a.push({d,kcal:h?h.kcal:0,logged:h?h.logged:false});}return a;})();
@@ -1688,6 +1696,7 @@ function renderMore(){
     ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
     ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('⏱️','Intermittent fasting',S.fasting?.startTs?'Fast in progress — tap to manage':'Set up a fasting window (16:8, 18:6…)','openFasting()')}
     ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
     ${row('📤','Share today\'s summary','Copy or share your daily macro summary','shareSummary()')}
     ${row('📖','My recipes',S.recipes.length?S.recipes.length+' saved recipes':'Create meal combos & save them','openRecipes()')}
@@ -1746,6 +1755,49 @@ function mealTimeline(){
           <div style="font-size:14px;font-weight:700;color:${s.color}">${fmt(s.kc)} cal</div>
         </div></div>`).join('')}
     </div></div>`;}
+
+// ---- Intermittent fasting tracker ----
+S.fasting=S.fasting||{enabled:false,window:16,startTs:null};
+window.openFasting=()=>{
+  const f=S.fasting;const now=Date.now();
+  const elapsed=f.startTs?Math.floor((now-f.startTs)/3600000):0;
+  const targetH=f.window;const done=elapsed>=targetH;
+  const pct=f.startTs?Math.min(100,elapsed/targetH*100):0;
+  const remaining=f.startTs&&!done?targetH-elapsed:0;
+  const hms=ts=>{const h=Math.floor(ts);const m=Math.floor((ts-h)*60);return h>0?`${h}h ${m}m`:`${m}m`;};
+  openSheet(`<h3>⏱️ Intermittent fasting</h3>
+    ${f.startTs?`<div style="text-align:center;margin:16px 0">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:4px">${done?'✅ Fast complete!':('Fasting · '+hms(elapsed)+' in')}</div>
+      <div style="font-size:42px;font-weight:900;color:${done?'#BEF264':'var(--accent)'}">
+        ${done?'Done':hms(remaining)+' left'}</div>
+      <div class="bar" style="height:8px;border-radius:4px;margin:12px 0"><i style="width:${pct}%;background:${done?'#BEF264':'var(--accent)'}"></i></div>
+      <div class="muted sm">${Math.round(pct)}% of ${targetH}h window</div>
+      <button class="ghost" style="margin-top:12px;color:#F6735A;border-color:#F6735A33" onclick="endFast()">Stop fast</button>
+    </div>`:`<div style="text-align:center;margin:16px 0">
+      <div style="font-size:48px;margin-bottom:8px">🕐</div>
+      <div class="muted sm" style="margin-bottom:16px">No active fast. Start one to track your window.</div>
+      <div style="margin-bottom:14px"><div class="muted sm" style="margin-bottom:6px">Fasting goal</div>
+        <div class="hscroll" style="justify-content:center">${[12,14,16,18,20].map(h=>
+          `<button class="chip ${f.window===h?'on':''}" onclick="S.fasting.window=${h};save();openFasting()">${h}:${24-h}</button>`).join('')}</div>
+      </div>
+      <button class="btn" onclick="startFast()">Start ${f.window}h fast</button>
+    </div>`}
+    <div class="muted sm" style="text-align:center;margin-top:8px">Most popular: 16:8 (fast 16h, eat within 8h)</div>`);};
+window.startFast=()=>{S.fasting.startTs=Date.now();S.fasting.enabled=true;save();openFasting();toast('Fast started!');haptic(20);};
+window.endFast=()=>{const h=S.fasting.startTs?Math.floor((Date.now()-S.fasting.startTs)/3600000):0;
+  S.fasting.startTs=null;S.fasting.enabled=false;save();closeSheet();toast(`Fast ended · ${h}h completed`);haptic(20);};
+function fastingCard(){const f=S.fasting;if(!f.startTs)return'';
+  const elapsed=(Date.now()-f.startTs)/3600000;const pct=Math.min(100,elapsed/f.window*100);
+  const done=elapsed>=f.window;const remaining=Math.max(0,f.window-elapsed);
+  const h=Math.floor(remaining);const m=Math.floor((remaining-h)*60);
+  const col=done?'#BEF264':'var(--accent)';
+  return `<div class="card fade" style="border:.5px solid ${col}33;cursor:pointer" onclick="openFasting()">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <div class="row" style="gap:8px"><span style="font-size:18px">⏱️</span><h3 style="margin:0">Intermittent fasting</h3></div>
+      <span style="font-size:13px;font-weight:700;color:${col}">${done?'Complete!':h+'h '+m+'m left'}</span></div>
+    <div class="bar" style="height:6px"><i style="width:${pct}%;background:${col}"></i></div>
+    <div class="muted sm" style="margin-top:4px">${Math.round(pct)}% of ${f.window}h fast · tap to manage</div>
+  </div>`;}
 
 // ---- AI weekly meal plan ----
 window.openWeeklyPlan=()=>{
@@ -2027,6 +2079,7 @@ window.openGoalSettings=()=>{
       <div><div class="muted sm">Protein (g)</div><input id="gP" class="in" type="number" value="${GOAL.p}"></div>
       <div><div class="muted sm">Carbs (g)</div><input id="gC" class="in" type="number" value="${GOAL.c}"></div>
       <div><div class="muted sm">Fat (g)</div><input id="gF" class="in" type="number" value="${GOAL.f}"></div>
+      <div style="grid-column:1/-1"><div class="muted sm">Target weight (lbs, optional)</div><input id="gTW" class="in" type="number" placeholder="e.g. 175" value="${GOAL.targetWeight||''}"></div>
     </div>
     <button class="btn" style="margin-bottom:10px" onclick="saveGoals()">Save goals</button>
     <div style="border-top:.5px solid var(--surfH);padding-top:14px;margin-top:4px">
@@ -2079,7 +2132,8 @@ window.saveGoals=()=>{
   const p=parseInt(document.getElementById('gP').value)||GOAL.p;
   const c=parseInt(document.getElementById('gC').value)||GOAL.c;
   const f=parseInt(document.getElementById('gF').value)||GOAL.f;
-  GOAL={cal,p,c,f};localStorage.setItem('mv_goal',JSON.stringify(GOAL));save();closeSheet();renderAll();toast('Goals saved');};
+  const tw=parseFloat(document.getElementById('gTW')?.value)||null;
+  GOAL={cal,p,c,f,...(tw?{targetWeight:tw}:{})};localStorage.setItem('mv_goal',JSON.stringify(GOAL));save();closeSheet();renderAll();toast('Goals saved');};
 
 // ---- Nutrition label popup (tap diary food item) ----
 window.diaryFoodDetail=(k,i)=>{
