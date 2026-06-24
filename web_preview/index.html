@@ -256,6 +256,33 @@ const DB=[
   // Drinks
   ['Coffee (black)','240 ml',2,0.3,0,0],['Orange juice','240 ml',112,1.7,26,0.5],
   ['Almond milk','240 ml',30,1,1,2.5],['Coconut water','240 ml',46,1.7,8.9,0.5],
+  ['Whole milk','240 ml',149,8,12,8],['Oat milk','240 ml',120,3,16,5],
+  ['Green tea','240 ml',2,0,0,0],['Protein shake (premade)','330 ml',160,25,8,3],
+  // More proteins
+  ['Ground turkey 93%','100 g',170,22,0,9],['Chicken thigh','100 g',177,20,0,11],
+  ['Beef jerky','28 g',116,9.4,3.1,7.3],['Canned salmon','85 g',120,17,0,6],
+  ['Steak (ribeye)','100 g',291,24,0,21],['Bacon','2 slices',86,6,0.1,7],
+  ['Rotisserie chicken','100 g',190,24,0,10],['Edamame (shelled)','100 g',121,11,8.9,5.2],
+  ['Tempeh','100 g',193,20,7.6,11],['Tofu (firm)','100 g',76,8.1,1.9,4.8],
+  // More dairy
+  ['Nonfat Greek yogurt','170 g',80,15,6,0],['Cream cheese','30 g',99,2,1.6,9.8],
+  ['Whole milk ricotta','60 g',108,7,2,8],['Skyr','170 g',110,19,8,0.5],
+  // More grains
+  ['Sourdough bread','1 slice',90,3,18,0.5],['English muffin','1 whole',134,4.4,26,1],
+  ['Corn tortilla','2 tortillas',90,2,18,1.5],['Farro','180 g cooked',220,8,45,1.5],
+  ['Crackers (whole grain)','5 crackers',70,1.5,11,2.5],['Couscous','100 g cooked',176,6,36,0.2],
+  // More fruits & veg
+  ['Raspberries','1 cup',64,1.5,14.7,0.8],['Peach','1 medium',59,1.4,14,0.4],
+  ['Watermelon','1 cup',46,0.9,11.5,0.2],['Kiwi','1 medium',42,0.8,10,0.4],
+  ['Kale','1 cup raw',33,2.2,6,0.5],['Asparagus','6 spears',20,2.2,4,0.1],
+  ['Mushrooms','1 cup',15,2.2,2.3,0.2],['Cauliflower','1 cup',25,2,5,0.1],
+  ['Zucchini','1 medium',33,2.4,6,0.6],['Brussels sprouts','1 cup',56,4,11,0.8],
+  ['Black beans','1/2 cup',114,7.6,20,0.5],['Lentils','1/2 cup cooked',115,9,20,0.4],
+  ['Chickpeas','1/2 cup',134,7.3,22,2.1],
+  // More snacks
+  ['Pretzels','28 g',108,2.6,22,0.8],['Rice crackers','15 g',60,1,13,0.5],
+  ['Beef stick','28 g',130,7,1,11],['Sunflower seeds','28 g',164,5.5,6.5,14],
+  ['Pumpkin seeds','28 g',151,9,5,13],['Cheese slice','21 g',74,4.5,0.3,6],
 ];
 const METRICS=[
   {key:'bench',name:'Bench press 1RM',unit:'lbs',hi:true,color:'#BEF264'},
@@ -1930,6 +1957,7 @@ function renderMore(){
     ${row('🏃','Activity calculator','Calculate calories burned for any exercise','openActivityCalc()')}
     ${row('⚡','Goal presets','Cutting · Bulking · Maintenance · High protein','openGoalPresets()')}
     ${row('🔔','Reminders',localStorage.getItem('mv_reminders')?'Meal & water reminders on':'Set meal & water reminders','openReminders()')}
+    ${row('📥','Export diary','Download your food log as CSV','exportDiary()')}
     ${row('🧑‍⚕️','Nutrition coach chat','Ask AI about your food, macros, and goals','openNutriChat()')}
     ${row('⏱️','Intermittent fasting',S.fasting?.startTs?'Fast in progress — tap to manage':'Set up a fasting window (16:8, 18:6…)','openFasting()')}
     ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
@@ -2241,6 +2269,22 @@ window.saveVitals=()=>{
   if(!sys||!dia){toast('Enter systolic and diastolic');return;}
   const hr=parseInt(document.getElementById('vHr')?.value||'0')||null;
   S.vitals.push({date:today(),sys,dia,hr});save();openVitals();toast('Vitals logged');haptic(10);};
+
+// ---- CSV diary export ----
+window.exportDiary=()=>{
+  const rows=[['Date','Meal','Food','Brand','Servings','kcal','Protein(g)','Carbs(g)','Fat(g)']];
+  const allDays=[...Object.keys(S.history||{})].sort();if(totals().kcal>0)allDays.push(today());
+  allDays.forEach(date=>{
+    const meals=date===today()?S.meals:(S.history[date]?._meals||{});
+    SLOTS.forEach(([k,n])=>(meals[k]||[]).forEach(f=>{
+      rows.push([date,n,f.name,f.brand||'',f.qty,Math.round(f.kcal*f.qty),
+        Math.round(f.p*f.qty),Math.round(f.c*f.qty),Math.round(f.f*f.qty)]);
+    }));
+  });
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download=`macrovault-diary-${today()}.csv`;a.click();
+  toast('Diary exported as CSV');};
 
 // ---- Meal & water reminders ----
 window.openReminders=async()=>{
