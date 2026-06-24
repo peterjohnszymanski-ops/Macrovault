@@ -269,6 +269,11 @@ S.coach=Object.assign({enabled:false,gymTime:'18:00',trainDays:[1,2,3,4,5],preCa
   cardioPerWeek:3,trainedToday:'',cardioDays:[]},S.coach||{});
 S.photos=S.photos||[];
 S.lock=S.lock||{enabled:false,pin:''};
+S.sleep=S.sleep||{};
+S.steps=S.steps||{};
+S.exercise=S.exercise||{};
+S.notes=S.notes||{};
+window._snapHistory=window._snapHistory||[];
 function load(){
   const raw=localStorage.getItem('mv6');
   if(raw) return JSON.parse(raw);
@@ -280,6 +285,7 @@ function load(){
              bodyfat:[[dayKey(-168),21.5],[dayKey(-112),19.6],[dayKey(-70),18.0],[dayKey(-28),16.7],[dayKey(-3),16.0]],
              squat:[[dayKey(-140),265],[dayKey(-70),308],[dayKey(-7),341]],deadlift:[[dayKey(-140),330],[dayKey(-70),385],[dayKey(-7),419]]},
     customMetrics:[],
+    sleep:{},steps:{},exercise:{},notes:{},
     meas:{waist:84,neck:38,hips:0,height:180,sex:'male'},
     capsules:[{day:dayKey(-14),title:'Best week',tags:['best week','high protein'],kcal:2180,protein:172,streak:7}],
     photos:[{id:'p1',day:dayKey(-168),src:SIL(21.5),bf:21.5,conf:0.7,pose:'front',notes:'Softer midsection, less definition.'},
@@ -292,14 +298,20 @@ function load(){
   seed.water=1500;
   // Seed the last 6 days so the streak + weekly chart look alive.
   const past=[2090,2240,1980,2160,2310,2050];
-  for(let i=6;i>=1;i--){seed.history[dayKey(-i)]={kcal:past[6-i],p:150+((i*7)%30),logged:true};}
+  const sleepSeed=[7.5,6.5,8,7,6,7.5,8];
+  const stepsSeed=[9200,7800,11000,8500,6200,9800,10200];
+  for(let i=6;i>=1;i--){seed.history[dayKey(-i)]={kcal:past[6-i],p:150+((i*7)%30),logged:true,sleep:sleepSeed[i],steps:stepsSeed[i]};
+    seed.sleep[dayKey(-i)]=sleepSeed[i];seed.steps[dayKey(-i)]=stepsSeed[i];}
   localStorage.setItem('mv6',JSON.stringify(seed));
   return seed;
 }
-function syncHistory(){const t=totals();S.history=S.history||{};S.history[today()]={kcal:Math.round(t.kcal),p:Math.round(t.p),logged:t.kcal>0};}
+function syncHistory(){const t=totals();S.history=S.history||{};
+  S.history[today()]={kcal:Math.round(t.kcal),p:Math.round(t.p),logged:t.kcal>0,
+    sleep:S.sleep[today()]||null,steps:S.steps[today()]||0};}
 function save(){syncHistory();localStorage.setItem('mv6',JSON.stringify(S));}
+const timeNow=()=>new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 function log1(state,slot,name){const f=G(DB.find(d=>d[0]===name));
-  state.meals[slot].push({name:f.name,brand:f.brand,kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});
+  state.meals[slot].push({name:f.name,brand:f.brand,kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{},time:''});
   const k=fkey(f);state.usage[k]=state.usage[k]||{f,count:0,last:0,fav:false};
   state.usage[k].count++;state.usage[k].last=Date.now();}
 
@@ -315,17 +327,19 @@ function arc(len,off,color){const l=Math.max(0,len);
   return `<circle cx="60" cy="60" r="52" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round"
     stroke-dasharray="${l} ${C-l}" stroke-dashoffset="${off}"/>`;}
 
-function donut(t){
+function donut(t,burned){
   const pc=t.p*4,cc=t.c*4,fc=t.f*9,tot=pc+cc+fc;
   let arcs='';
   if(tot<=0){arcs=`<circle cx="60" cy="60" r="52" fill="none" stroke="#1C2530" stroke-width="14"/>`;}
   else{const lp=C*pc/tot,lc=C*cc/tot,lf=C*fc/tot;
     arcs=`<circle cx="60" cy="60" r="52" fill="none" stroke="#1C2530" stroke-width="14"/>`+
       arc(lp,0,'#2DD4BF')+arc(lc,-lp,'#F6B73C')+arc(lf,-(lp+lc),'#A78BFA');}
+  const net=GOAL.cal+(burned||0)-t.kcal;
+  const netCol=net<0?'#F6735A':'#E7ECEF';
   return `<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="calories left" onclick="openDayFoodLog()" style="cursor:pointer;flex-shrink:0">
     <g transform="rotate(-90 60 60)">${arcs}</g>
-    <text x="60" y="56" text-anchor="middle" fill="#E7ECEF" font-size="26" font-weight="800">${fmt(GOAL.cal-t.kcal)}</text>
-    <text x="60" y="74" text-anchor="middle" fill="#8A949C" font-size="11">cal left</text></svg>`;
+    <text x="60" y="54" text-anchor="middle" fill="${netCol}" font-size="24" font-weight="800">${fmt(Math.abs(net))}</text>
+    <text x="60" y="71" text-anchor="middle" fill="#8A949C" font-size="10">${net<0?'over':'cal left'}</text></svg>`;
 }
 function barRow(label,val,target,color){
   return `<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px">
@@ -352,7 +366,7 @@ function insights(){const t=totals(),out=[],left=GOAL.cal-t.kcal,pGap=Math.round
 window.openDayFoodLog=()=>{openFoodPage(currentSlot());};
 
 window.quickLog=i=>{const f=window._recent[i];if(!f)return;const slot=currentSlot();
-  S.meals[slot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});
+  S.meals[slot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{},time:timeNow()});
   const k=fkey(f);S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};S.usage[k].f=f;S.usage[k].count++;S.usage[k].last=Date.now();
   save();renderToday();toast('Logged '+f.name+' · '+SLOTS.find(s=>s[0]===slot)[1]);};
 
@@ -422,6 +436,10 @@ window.togTrainDay=i=>{const a=S.coach.trainDays,x=a.indexOf(i);x<0?a.push(i):a.
 function renderToday(){
   syncHistory();
   const t=totals(), st=streak();
+  const burned=S.exercise[today()]||0;
+  const netLeft=GOAL.cal+burned-t.kcal;
+  const slp=S.sleep[today()]||null;
+  const stps=S.steps[today()]||0;
 
   window._recent=recents().slice(0,10);
   const quick=window._recent.map((f,i)=>`<button class="qchip" onclick="quickLog(${i})">
@@ -460,23 +478,26 @@ function renderToday(){
 
     <div class="card fade">
       <div class="row" style="gap:14px;align-items:center">
-        ${donut(t)}
+        ${donut(t,burned)}
         <div style="flex:1">
           ${barRow('Protein',t.p,GOAL.p,'#2DD4BF')}
           ${barRow('Carbs',t.c,GOAL.c,'#F6B73C')}
           ${barRow('Fat',t.f,GOAL.f,'#A78BFA')}
         </div>
       </div>
-      <div class="row" style="margin-top:14px;padding-top:12px;border-top:.5px solid var(--surfH);gap:6px">
-        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 4px">
-          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Eaten</div>
-          <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1">${fmt(t.kcal)}</div></div>
-        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 4px">
-          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Left</div>
-          <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1;color:#BEF264">${fmt(GOAL.cal-t.kcal)}</div></div>
-        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:10px 4px">
-          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Goal</div>
-          <div style="font-size:20px;font-weight:800;letter-spacing:-.5px;line-height:1">${fmt(GOAL.cal)}</div></div>
+      <div class="row" style="margin-top:14px;padding-top:12px;border-top:.5px solid var(--surfH);gap:5px">
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:9px 3px">
+          <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Eaten</div>
+          <div style="font-size:18px;font-weight:800;letter-spacing:-.5px;line-height:1">${fmt(t.kcal)}</div></div>
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:9px 3px;cursor:pointer" onclick="logExercise()">
+          <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Burned</div>
+          <div style="font-size:18px;font-weight:800;letter-spacing:-.5px;line-height:1;color:#F6735A">${burned?fmt(burned):'+'}</div></div>
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:9px 3px">
+          <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Net</div>
+          <div style="font-size:18px;font-weight:800;letter-spacing:-.5px;line-height:1;color:${netLeft<0?'#F6735A':'#BEF264'}">${fmt(netLeft)}</div></div>
+        <div class="stat" style="text-align:center;background:var(--surfH);border-radius:14px;padding:9px 3px">
+          <div style="font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Goal</div>
+          <div style="font-size:18px;font-weight:800;letter-spacing:-.5px;line-height:1">${fmt(GOAL.cal)}</div></div>
       </div>
     </div>
 
@@ -497,14 +518,18 @@ function renderToday(){
     <div class="card fade diary-section">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
         <h3 style="margin:0">Today's diary</h3>
-        <span class="muted sm">${fmt(t.kcal)} kcal</span></div>
+        <div class="row" style="gap:8px">
+          <button class="ghost" style="width:auto;padding:5px 10px;font-size:12px" onclick="openNotes()">📝 Note</button>
+          <span class="muted sm">${fmt(t.kcal)} kcal</span></div></div>
+      ${S.notes[today()]?`<div style="font-size:13px;color:var(--muted);padding:6px 10px;background:var(--surfH);border-radius:10px;margin-bottom:10px;line-height:1.5;cursor:pointer" onclick="openNotes()">📝 ${S.notes[today()]}</div>`:''}
       ${SLOTS.map(([k,n])=>{
         const foods=S.meals[k];const kc=mealKcal(k);
         const foodRows=foods.map((x,i)=>`
           <div class="diary-food" onclick="editItemQty('${k}',${i})">
-            <div style="flex:1;min-width:0">
+            <div style="font-size:22px;width:36px;flex-shrink:0;text-align:center">${foodEmoji(x.name)}</div>
+            <div style="flex:1;min-width:0;padding-left:8px">
               <div class="diary-food-name">${x.name}${x.brand?`<span class="diary-food-brand"> · ${x.brand}</span>`:''}</div>
-              <div class="diary-food-meta">${x.qty%1===0?x.qty:x.qty.toFixed(1)}× · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}g</div>
+              <div class="diary-food-meta">${x.qty%1===0?x.qty:x.qty.toFixed(1)}× · ${fmt(x.kcal*x.qty)} kcal · P${Math.round(x.p*x.qty)}g${x.time?` · <span style="color:var(--muted)">${x.time}</span>`:''}</div>
             </div>
             <button class="diary-del" onclick="event.stopPropagation();delItem('${k}',${i})"><i class="ti ti-x"></i></button>
           </div>`).join('');
@@ -532,17 +557,43 @@ function renderToday(){
       <div class="row" style="gap:7px;align-items:flex-end">${bars}</div></div>
 
     <div class="row fade" style="gap:12px">
-      <div class="card" style="flex:1;margin:0"><div class="muted sm">Water</div>
-        <div style="font-size:22px;font-weight:800;color:#38BDF8">${(S.water/1000).toFixed(2)} L</div>
-        <div class="muted sm">of ${(2.5).toFixed(1)} L goal</div>
-        <div class="row" style="gap:8px;margin-top:10px">
-          <button class="ghost" onclick="water(250)">+250</button>
-          <button class="ghost" onclick="water(-250)">−250</button></div></div>
+      <div class="card" style="flex:1;margin:0">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <div class="muted sm">Water</div>
+          <div style="font-size:13px;font-weight:700;color:#38BDF8">${Math.round(S.water/250)}/10 glasses</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+          ${Array.from({length:10},(_,gi)=>{
+            const filled=S.water>=(gi+1)*250;
+            return `<button onclick="water(${filled?-250:250})" style="background:none;border:none;cursor:pointer;padding:2px;font-size:22px;line-height:1">${filled?'🫗':'🥤'}</button>`;
+          }).join('')}
+        </div>
+        <div class="muted sm">${(S.water/1000).toFixed(2)} L of 2.5 L</div>
+      </div>
       <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="logWeight()">
         <div class="row" style="justify-content:space-between"><div class="muted sm">Weight trend</div>
           <span style="color:#2DD4BF">${spark(wvals,'#2DD4BF')}</span></div>
         <div style="font-size:22px;font-weight:800">${w?w.toFixed(1)+' lbs':'—'}</div>
         <div class="sm" style="color:${wDelta<=0?'#BEF264':'#F6B73C'}">${wDelta?(wDelta>0?'+':'')+wDelta.toFixed(1)+' lbs overall':'tap to log'}</div></div>
+    </div>
+
+    <div class="row fade" style="gap:12px;margin-top:14px">
+      <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="logSleep()">
+        <div class="muted sm" style="margin-bottom:4px">😴 Sleep</div>
+        <div style="font-size:24px;font-weight:800;color:#A78BFA">${slp?slp+'h':'—'}</div>
+        <div class="muted sm">${slp?(slp>=7?'Well rested':'Under target'):'Tap to log'}</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${[6,7,7.5,8,9].map(h=>`<button class="chip ${slp===h?'on':''}" onclick="event.stopPropagation();logSleepVal(${h})" style="padding:5px 10px;font-size:12px">${h}h</button>`).join('')}
+        </div>
+      </div>
+      <div class="card" style="flex:1;margin:0;cursor:pointer" onclick="logSteps()">
+        <div class="muted sm" style="margin-bottom:4px">👟 Steps</div>
+        <div style="font-size:24px;font-weight:800;color:#2DD4BF">${stps?stps.toLocaleString():'—'}</div>
+        <div class="muted sm">${stps?(stps>=10000?'Goal hit! 🎉':stps>=7500?'Almost there':'Keep moving'):'Tap to log'}</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${[1000,2500,5000].map(n=>`<button class="chip" onclick="event.stopPropagation();addSteps(${n})" style="padding:5px 10px;font-size:12px">+${n>=1000?n/1000+'k':n}</button>`).join('')}
+        </div>
+      </div>
     </div>`;
 }
 
@@ -656,13 +707,29 @@ function renderFoodPage(q){
   const slotName=SLOTS.find(s=>s[0]===activeSlot)[1];
   const tabs=SLOTS.map(([k,n])=>`<button class="meal-tab ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';renderFoodPage(document.getElementById('foodQ')?.value||'')">${n}</button>`).join('');
 
-  // Snap photo thumbnail at top
-  const snapHtml=window._snapThumb?`
-    <div style="position:relative;margin-bottom:14px;border-radius:16px;overflow:hidden">
-      <img src="${window._snapThumb}" style="width:100%;max-height:190px;object-fit:cover;display:block">
-      <button onclick="window._snapThumb=null;renderFoodPage(document.getElementById('foodQ')?.value||'')"
-        style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.65);border:none;color:#fff;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>
-      <div style="position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,.6);color:#BEF264;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;letter-spacing:.5px">AI SNAP</div>
+  // Snap photo gallery — show all snaps taken this session (up to 6)
+  const gallery=window._snapHistory||[];
+  const snapHtml=gallery.length?`
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:8px">Today's food photos</div>
+      <div style="display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px">
+        ${gallery.map((s,gi)=>`<div style="position:relative;flex:0 0 90px;height:90px;border-radius:14px;overflow:hidden;background:var(--surfH);cursor:pointer" onclick="window._snapThumb=window._snapHistory[${gi}].src;renderFoodPage(document.getElementById('foodQ')?.value||'')">
+          <img src="${s.src}" style="width:100%;height:100%;object-fit:cover;display:block">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));padding:4px 6px">
+            <div style="color:#fff;font-size:10px;font-weight:600">${s.time}</div>
+            <div style="color:#BEF264;font-size:9px">${s.meal}</div>
+          </div>
+        </div>`).join('')}
+        <div style="flex:0 0 90px;height:90px;border-radius:14px;border:1.5px dashed var(--surfH);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-direction:column;gap:4px" onclick="snapFood()">
+          <i class="ti ti-camera-plus" style="font-size:22px;color:var(--accent)"></i>
+          <div style="font-size:10px;color:var(--muted)">Add snap</div>
+        </div>
+      </div>
+      ${window._snapThumb?`<div style="position:relative;margin-top:10px;border-radius:14px;overflow:hidden">
+        <img src="${window._snapThumb}" style="width:100%;max-height:160px;object-fit:cover;display:block">
+        <button onclick="window._snapThumb=null;renderFoodPage(document.getElementById('foodQ')?.value||'')" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.65);border:none;color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>
+        <div style="position:absolute;bottom:8px;left:10px;background:rgba(0,0,0,.6);color:#BEF264;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px">AI SNAP</div>
+      </div>`:''}
     </div>`:'';
 
   // Already logged for this meal
@@ -695,7 +762,7 @@ function renderFoodPage(q){
     <div style="padding:14px 16px 100px">
       ${snapHtml}
       ${loggedHtml}
-      <div style="display:flex;gap:10px;margin-bottom:14px">
+      <div style="display:flex;gap:10px;margin-bottom:10px">
         <button onclick="scanBarcode()" style="flex:1;background:var(--surf);border:1.5px solid var(--surfH);border-radius:18px;padding:15px 8px 12px;cursor:pointer;text-align:center">
           <i class="ti ti-barcode" style="font-size:26px;display:block;margin-bottom:6px;color:var(--accent)"></i>
           <div style="font-size:13px;font-weight:600">Scan Barcode</div>
@@ -703,6 +770,10 @@ function renderFoodPage(q){
         <button onclick="snapFood()" style="flex:1;background:var(--surf);border:1.5px solid var(--surfH);border-radius:18px;padding:15px 8px 12px;cursor:pointer;text-align:center">
           <i class="ti ti-camera" style="font-size:26px;display:block;margin-bottom:6px;color:var(--accent)"></i>
           <div style="font-size:13px;font-weight:600">Snap Food AI</div>
+        </button>
+        <button onclick="quickAdd()" style="flex:1;background:var(--surf);border:1.5px solid var(--surfH);border-radius:18px;padding:15px 8px 12px;cursor:pointer;text-align:center">
+          <i class="ti ti-bolt" style="font-size:26px;display:block;margin-bottom:6px;color:var(--accent)"></i>
+          <div style="font-size:13px;font-weight:600">Quick Add</div>
         </button>
       </div>
       <div class="food-search-bar" style="margin-bottom:6px">
@@ -760,21 +831,28 @@ function foodEmoji(name){
 
 function rowHtml(f){
   const i=DISPLAY.push(f)-1;
-  const fav=(S.usage[fkey(f)]||{}).fav;
+  const k=fkey(f);
+  const fav=(S.usage[k]||{}).fav;
   const brand=f.brand||(f.off?'Open Food Facts':'Generic');
   return `<div class="frow" onclick="portion(${i})">
     <div style="width:46px;height:46px;border-radius:14px;background:var(--surfH);display:flex;align-items:center;justify-content:center;font-size:25px;flex-shrink:0">${foodEmoji(f.name)}</div>
     <div style="flex:1;min-width:0;padding:0 10px">
-      <div class="frow-name">${fav?'★ ':''}${f.name}</div>
+      <div class="frow-name">${f.name}</div>
       <div class="frow-brand">${brand}</div>
     </div>
-    <div style="text-align:right;flex-shrink:0;margin-right:10px">
+    <div style="text-align:right;flex-shrink:0;margin-right:6px">
       <div class="frow-kcal">${f.kcal} cals</div>
       <div class="frow-serv">${f.serv}</div>
     </div>
+    <button onclick="event.stopPropagation();toggleFav(${i})" style="background:none;border:none;font-size:20px;cursor:pointer;padding:6px;line-height:1;color:${fav?'#F6B73C':'var(--surfH)'};flex-shrink:0">${fav?'★':'☆'}</button>
     <button class="frow-qadd" onclick="event.stopPropagation();logIdx(${i})" title="Quick add">+</button>
   </div>`;
 }
+window.toggleFav=i=>{const f=DISPLAY[i];if(!f)return;const k=fkey(f);
+  S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};
+  S.usage[k].fav=!S.usage[k].fav;save();
+  const q=document.getElementById('foodQ');renderFoodPage(q?q.value:'');
+  toast(S.usage[k].fav?'★ Saved to favorites':'Removed from favorites');};
 window.portion=i=>{const f=DISPLAY[i];if(!f)return;window._port={f,qty:f.lastQty||1};renderPortion();};
 function renderPortion(){const {f,qty}=window._port;const kc=Math.round(f.kcal*qty);
   const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';document.querySelectorAll('.portChip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${n}</button>`).join('');
@@ -815,24 +893,24 @@ function afterLog(){
   }
 }
 window.portAdd=()=>{const {f,qty}=window._port;
-  S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty,m:f.m||{}});
+  S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty,m:f.m||{},time:timeNow()});
   const k=fkey(f);S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};S.usage[k].f=f;S.usage[k].count++;S.usage[k].last=Date.now();
   save();afterLog();toast('Logged '+(qty%1===0?qty:qty.toFixed(1))+'× '+f.name);};
 
 
 window.logIdx=i=>{
   const f=DISPLAY[i]; if(!f)return;
-  S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});
+  S.meals[activeSlot].push({name:f.name,brand:f.brand||'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{},time:timeNow()});
   const k=fkey(f); S.usage[k]=S.usage[k]||{f,count:0,last:0,fav:false};
   S.usage[k].f=f; S.usage[k].count++; S.usage[k].last=Date.now();
   save();afterLog();toast('Logged '+dispName(f));
 };
 window.quickAdd=()=>{const k=parseFloat(prompt('Calories to quick-add:','300'));if(!k)return;
-  S.meals[activeSlot].push({name:'Quick add',brand:'',kcal:k,p:0,c:0,f:0,qty:1});save();afterLog();toast('Quick added '+fmt(k)+' kcal');};
+  S.meals[activeSlot].push({name:'Quick add',brand:'',kcal:k,p:0,c:0,f:0,qty:1,time:timeNow()});save();afterLog();toast('Quick added '+fmt(k)+' kcal');};
 window.usuals=()=>{openSheet(`<h3>Your usuals</h3>
   <div class="fitem" onclick="logUsual()"><div><div><i class="ti ti-star star"></i> My usual breakfast</div>
   <div class="muted sm">Greek yogurt + Oats · 250 kcal</div></div><i class="ti ti-plus" style="color:#BEF264"></i></div>`);};
-window.logUsual=()=>{['Greek yogurt','Oats'].forEach(n=>{const f=G(DB.find(d=>d[0]===n));S.meals.breakfast.push({name:f.name,brand:'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{}});});
+window.logUsual=()=>{const t=timeNow();['Greek yogurt','Oats'].forEach(n=>{const f=G(DB.find(d=>d[0]===n));S.meals.breakfast.push({name:f.name,brand:'',kcal:f.kcal,p:f.p,c:f.c,f:f.f,qty:1,m:f.m||{},time:t});});
   save();renderToday();closeSheet();toast('Logged usual breakfast');};
 window.water=ml=>{S.water=Math.max(0,S.water+ml);save();renderToday();};
 window.logWeight=()=>{const v=parseFloat(prompt('Log weight (lbs):',S.weight.length?S.weight[S.weight.length-1][1]:'180'));
@@ -895,7 +973,33 @@ function renderProgress(){
     <div class="row" style="gap:10px">
       <button class="ghost" onclick="pickLift()"><i class="ti ti-barbell"></i> Log a lift</button>
       <button class="ghost" onclick="estimateBF()"><i class="ti ti-ruler"></i> Body fat</button></div>
-    <button class="ghost" style="margin-top:10px" onclick="addCustomMetric()"><i class="ti ti-plus"></i> Add a custom metric</button>`;
+    <button class="ghost" style="margin-top:10px" onclick="addCustomMetric()"><i class="ti ti-plus"></i> Add a custom metric</button>
+    ${(()=>{
+      const slpDays=[];const stpDays=[];
+      for(let i=6;i>=0;i--){const d=dayKey(-i);slpDays.push({d,v:S.sleep[d]||null});stpDays.push({d,v:S.steps[d]||0});}
+      const slpAvg=(()=>{const a=slpDays.filter(x=>x.v);return a.length?Math.round(a.reduce((s,x)=>s+x.v,0)/a.length*10)/10:null;})();
+      const stpAvg=(()=>{const a=stpDays.filter(x=>x.v);return a.length?Math.round(a.reduce((s,x)=>s+x.v,0)/a.length):null;})();
+      const slpBars=slpDays.map(x=>{const pct=x.v?Math.min(100,x.v/9*100):0;const col=!x.v?'#1C2530':x.v>=7?'#BEF264':'#F6B73C';
+        return `<div class="wkbar"><div class="col"><i style="height:${pct}%;background:${col}"></i></div><div class="muted sm">${x.d.slice(8)}</div></div>`;}).join('');
+      const stpBars=stpDays.map(x=>{const pct=x.v?Math.min(100,x.v/12000*100):0;const col=!x.v?'#1C2530':x.v>=10000?'#BEF264':'#2DD4BF';
+        return `<div class="wkbar"><div class="col"><i style="height:${pct}%;background:${col}"></i></div><div class="muted sm">${x.d.slice(8)}</div></div>`;}).join('');
+      return `<div class="card fade" style="margin-top:14px">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <h3 style="margin:0">😴 Sleep (7 days)</h3>
+          <span class="muted sm">${slpAvg?'avg '+slpAvg+'h':'no data'}</span></div>
+        <div class="row" style="gap:7px;align-items:flex-end">${slpBars}</div>
+        <div class="muted sm" style="margin-top:6px">Green ≥7h · Amber &lt;7h · Goal: 7–9h per night</div>
+        <button class="ghost" style="margin-top:10px;font-size:13px" onclick="logSleep()"><i class="ti ti-moon"></i> Log tonight's sleep</button>
+      </div>
+      <div class="card fade" style="margin-top:10px">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <h3 style="margin:0">👟 Steps (7 days)</h3>
+          <span class="muted sm">${stpAvg?stpAvg.toLocaleString()+' avg':'no data'}</span></div>
+        <div class="row" style="gap:7px;align-items:flex-end">${stpBars}</div>
+        <div class="muted sm" style="margin-top:6px">Green ≥10k steps · Goal: 10,000/day</div>
+        <button class="ghost" style="margin-top:10px;font-size:13px" onclick="logSteps()"><i class="ti ti-shoe"></i> Log steps</button>
+      </div>`;
+    })()}`;
 }
 window.pickLift=()=>{openSheet(`<h3>Log a lift</h3>${['bench','squat','deadlift'].map(k=>{const m=METRICS.find(x=>x.key===k);
   return `<div class="fitem" onclick="closeSheet();logMetric('${k}')"><div>${m.name}</div><i class="ti ti-plus" style="color:#BEF264"></i></div>`;}).join('')}`);};
@@ -1035,7 +1139,12 @@ window.snapFood=async()=>{
 };
 function pickImage(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.capture='environment';i.onchange=()=>res(i.files[0]||null);i.click();});}
 function pickImageRoll(){return new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>res(i.files[0]||null);i.click();});}
-function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{window._snapThumb=r.result;res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(file);});}
+function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{
+  window._snapThumb=r.result;
+  window._snapHistory=window._snapHistory||[];
+  window._snapHistory.unshift({src:r.result,time:timeNow(),meal:SLOTS.find(s=>s[0]===activeSlot)?.[1]||''});
+  if(window._snapHistory.length>6)window._snapHistory.pop();
+  res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(file);});}
 async function analyzeFood(b64,mime,key){
   // Structured output via tool use (the reliable Anthropic pattern) — Claude is
   // forced to call log_foods, and we read the typed args from the tool_use block.
@@ -1070,8 +1179,9 @@ function renderAi(){
 }
 window.editAiKcal=i=>{const it=window._ai[i];const v=parseFloat(prompt('Calories for '+it.name+':',it.kcal));if(isNaN(v))return;it.kcal=Math.round(v);renderAi();};
 window.logAi=()=>{
-  window._ai.filter(x=>x.sel).forEach(it=>S.meals[activeSlot].push({name:it.name,brand:'',kcal:it.kcal,p:it.p,c:it.c,f:it.f,qty:1,m:{}}));
-  save();renderToday();closeSheet();toast('Logged from photo');
+  const t=timeNow();
+  window._ai.filter(x=>x.sel).forEach(it=>S.meals[activeSlot].push({name:it.name,brand:'',kcal:it.kcal,p:it.p,c:it.c,f:it.f,qty:1,m:{},time:t}));
+  save();afterLog();toast('Logged from photo');
 };
 window.openKeySetup=()=>{
   const k=localStorage.getItem('anthropicKey')||'';
@@ -1331,6 +1441,54 @@ function renderMore(){
       <div class="row" style="justify-content:space-between"><span><i class="ti ti-refresh"></i> Reset demo data</span></div></div>
     <div class="muted sm" style="text-align:center;margin-top:16px">Web preview of MacroVault.<br>The native iOS app adds barcode scan, camera AI, biometric Vault lock & encrypted storage.</div>`;
 }
+
+// ---- Daily notes ----
+window.openNotes=()=>{const cur=S.notes[today()]||'';
+  openSheet(`<h3>📝 Today's note</h3>
+    <textarea id="notesTxt" class="in" style="min-height:120px;resize:none;line-height:1.5;font-size:15px" placeholder="How are you feeling? Anything notable about today…">${cur}</textarea>
+    <button class="btn" style="margin-top:10px" onclick="saveNote()">Save note</button>
+    ${cur?`<button class="ghost" style="margin-top:8px" onclick="clearNote()">Clear note</button>`:''}`)
+  setTimeout(()=>{const e=document.getElementById('notesTxt');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length);}},80);};
+window.saveNote=()=>{const v=(document.getElementById('notesTxt')||{}).value||'';
+  S.notes[today()]=v;save();closeSheet();renderToday();toast('Note saved');};
+window.clearNote=()=>{S.notes[today()]='';save();closeSheet();renderToday();toast('Note cleared');};
+
+// ---- Sleep tracker ----
+window.logSleep=()=>{
+  const cur=S.sleep[today()]||'';
+  const v=parseFloat(prompt('Hours slept last night:',cur||'7.5'));
+  if(isNaN(v)||v<=0)return;
+  S.sleep[today()]=Math.round(v*10)/10;save();renderToday();toast('Sleep logged: '+v+'h');};
+window.logSleepVal=v=>{S.sleep[today()]=v;save();renderToday();toast('Sleep: '+v+'h');};
+
+// ---- Steps tracker ----
+window.logSteps=()=>{
+  const cur=S.steps[today()]||'';
+  const v=parseInt(prompt('Steps today:',cur||'8000'));
+  if(isNaN(v)||v<0)return;
+  S.steps[today()]=v;save();renderToday();toast(v.toLocaleString()+' steps logged');};
+window.addSteps=n=>{S.steps[today()]=(S.steps[today()]||0)+n;save();renderToday();toast('+'+(n>=1000?n/1000+'k':n)+' steps');};
+
+// ---- Exercise calories ----
+window.logExercise=()=>{
+  const cur=S.exercise[today()]||0;
+  openSheet(`<h3>Log exercise</h3>
+    <div class="muted sm" style="margin-bottom:12px">Calories burned boost your daily net budget.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+      ${[['🚶 Walk 30m',120],['🏃 Run 30m',280],['🚴 Bike 30m',250],['💪 Weights 45m',200],['🏊 Swim 30m',300],['🧘 Yoga 45m',120]].map(([label,kcal])=>
+        `<button class="ghost" style="text-align:left;padding:10px 12px" onclick="addExercise(${kcal});closeSheet()">
+          <div style="font-size:13px;font-weight:600">${label}</div>
+          <div style="font-size:12px;color:var(--accent)">~${kcal} kcal</div>
+        </button>`).join('')}
+    </div>
+    <div class="muted sm" style="margin-bottom:6px">Or enter custom calories burned:</div>
+    <div class="row" style="gap:8px">
+      <input id="exCal" class="in" type="number" placeholder="kcal burned" value="${cur||''}">
+      <button class="btn" style="width:auto;padding:14px 20px" onclick="addExercise(parseInt(document.getElementById('exCal').value)||0);closeSheet()">Add</button>
+    </div>
+    ${cur?`<div class="muted sm" style="margin-top:10px">Today: <b style="color:var(--accent)">${cur} kcal</b> burned · <button class="ghost" style="display:inline;padding:4px 10px;font-size:12px;width:auto" onclick="S.exercise[today()]=0;save();renderToday();closeSheet();toast('Cleared')">Clear</button></div>`:''}`);
+};
+window.addExercise=kcal=>{if(!kcal)return;S.exercise[today()]=(S.exercise[today()]||0)+kcal;save();renderToday();toast('+'+kcal+' kcal exercise burned');};
 
 function renderAll(){renderToday();renderProgress();renderVault();renderMore();}
 function animateToday(){const el=$('#view-today');el.classList.remove('anim');void el.offsetWidth;el.classList.add('anim');}
