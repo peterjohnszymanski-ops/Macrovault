@@ -593,7 +593,7 @@ function renderToday(){
         ${donut(t,burned)}
         <div style="flex:1">
           ${barRow('Protein',t.p,GOAL.p,'#2DD4BF')}
-          ${barRow('Carbs',t.c,GOAL.c,'#F6B73C')}
+          ${barRow('Carbs'+(mt.fiber>0?` (net ${Math.round(Math.max(0,t.c-mt.fiber))}g)`:''),t.c,GOAL.c,'#F6B73C')}
           ${barRow('Fat',t.f,GOAL.f,'#A78BFA')}
           ${mt.fiber>0?`<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px"><span style="color:#BEF264">Fiber</span><span class="muted">${Math.round(mt.fiber)} / ${MTARGET.fiber?.[0]||28} g</span></div><div class="bar"><i style="width:${Math.min(100,mt.fiber/(MTARGET.fiber?.[0]||28)*100)}%;background:#BEF264"></i></div></div>`:''}
           ${mt.sodium>0?`<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px"><span style="color:${mt.sodium>2300?'#F6735A':'#F6B73C'}">Sodium</span><span class="muted">${Math.round(mt.sodium)} / ${MTARGET.sodium?.[0]||2300} mg</span></div><div class="bar"><i style="width:${Math.min(100,mt.sodium/(MTARGET.sodium?.[0]||2300)*100)}%;background:${mt.sodium>2300?'#F6735A':'#F6B73C'}"></i></div></div>`:''}
@@ -1958,6 +1958,8 @@ function renderMore(){
     ${row('⚡','Goal presets','Cutting · Bulking · Maintenance · High protein','openGoalPresets()')}
     ${row('🔔','Reminders',localStorage.getItem('mv_reminders')?'Meal & water reminders on':'Set meal & water reminders','openReminders()')}
     ${row('📥','Export diary','Download your food log as CSV','exportDiary()')}
+    ${row('📏','Body measurements',S.measurements?.length?'Last: '+S.measurements.slice(-1)[0]?.date:'Waist, hips, chest & more','openMeasurements()')}
+    ${row('🍺','Log a drink','Beer, wine, spirits & more','openAlcohol()')}
     ${row('🧑‍⚕️','Nutrition coach chat','Ask AI about your food, macros, and goals','openNutriChat()')}
     ${row('⏱️','Intermittent fasting',S.fasting?.startTs?'Fast in progress — tap to manage':'Set up a fasting window (16:8, 18:6…)','openFasting()')}
     ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
@@ -2269,6 +2271,60 @@ window.saveVitals=()=>{
   if(!sys||!dia){toast('Enter systolic and diastolic');return;}
   const hr=parseInt(document.getElementById('vHr')?.value||'0')||null;
   S.vitals.push({date:today(),sys,dia,hr});save();openVitals();toast('Vitals logged');haptic(10);};
+
+// ---- Alcohol tracker ----
+const DRINKS=[
+  {n:'Beer (regular)',e:'🍺',kcal:153,p:1.6,c:13,f:0,serv:'355ml can'},
+  {n:'Beer (light)',e:'🍺',kcal:103,p:0.9,c:5.8,f:0,serv:'355ml can'},
+  {n:'Wine (red)',e:'🍷',kcal:125,p:0.1,c:3.8,f:0,serv:'148ml glass'},
+  {n:'Wine (white)',e:'🥂',kcal:121,p:0.1,c:3.8,f:0,serv:'148ml glass'},
+  {n:'Vodka shot',e:'🥃',kcal:97,p:0,c:0,f:0,serv:'1.5oz'},
+  {n:'Whiskey shot',e:'🥃',kcal:105,p:0,c:0,f:0,serv:'1.5oz'},
+  {n:'Tequila shot',e:'🥃',kcal:97,p:0,c:0,f:0,serv:'1.5oz'},
+  {n:'Gin & tonic',e:'🍹',kcal:143,p:0,c:14,f:0,serv:'240ml'},
+  {n:'Margarita',e:'🍹',kcal:168,p:0.4,c:14,f:0.1,serv:'240ml'},
+  {n:'Hard seltzer',e:'🥤',kcal:100,p:0,c:2,f:0,serv:'355ml can'},
+];
+window.openAlcohol=()=>{openSheet(`<h3>🍺 Log a drink</h3>
+  <div style="margin-bottom:12px" class="muted sm">Calories from alcohol are logged to your active meal slot.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    ${DRINKS.map(d=>`<button onclick="logDrink(${JSON.stringify(d).replace(/"/g,'&quot;')})" style="background:var(--surfH);border:none;border-radius:14px;padding:12px;text-align:left;cursor:pointer">
+      <div style="font-size:24px;margin-bottom:4px">${d.e}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${d.n}</div>
+      <div class="muted sm">${d.kcal} kcal · ${d.serv}</div>
+    </button>`).join('')}
+  </div>
+  <button class="ghost" style="margin-top:10px" onclick="closeSheet();openFoodPage('alcohol')"><i class="ti ti-search"></i> Search more drinks</button>`);}
+window.logDrink=d=>{
+  S.meals[activeSlot].push({name:d.n,brand:'',kcal:d.kcal,p:d.p,c:d.c,f:d.f,qty:1,time:timeNow(),serv:d.serv});
+  save();renderToday();closeSheet();toast('Logged: '+d.n);haptic(10);};
+
+// ---- Body measurements ----
+S.measurements=S.measurements||[];
+window.openMeasurements=()=>{
+  const last=S.measurements.slice(-1)[0]||{};
+  const fields=[['waist','Waist','in'],['hips','Hips','in'],['chest','Chest','in'],
+                ['bicep','Bicep (flexed)','in'],['thigh','Thigh','in'],['neck','Neck','in']];
+  openSheet(`<h3>📏 Body measurements</h3>
+    ${last.date?`<div class="muted sm" style="margin-bottom:10px">Last logged: ${last.date}</div>`:''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${fields.map(([k,label,unit])=>`<div>
+        <div class="muted sm">${label} (${unit})</div>
+        <input id="m_${k}" class="in" type="number" step="0.1" placeholder="${last[k]||'–'}" value="">
+      </div>`).join('')}
+    </div>
+    <button class="btn" onclick="saveMeasurements()">Save measurements</button>
+    ${S.measurements.length>1?`<div style="margin-top:14px"><div class="muted sm" style="margin-bottom:6px">History</div>
+      ${S.measurements.slice(-5).reverse().map(m=>`<div style="font-size:12px;padding:5px 0;border-bottom:.5px solid var(--surfH)" class="row">
+        <span style="color:var(--muted);flex:1">${m.date}</span>
+        ${fields.filter(([k])=>m[k]).map(([k,l,u])=>`<span style="margin-left:8px">${l.split(' ')[0]}: ${m[k]}${u}</span>`).join('')}
+      </div>`).join('')}</div>`:''}`);}
+window.saveMeasurements=()=>{
+  const fields=['waist','hips','chest','bicep','thigh','neck'];
+  const entry={date:today()};let any=false;
+  fields.forEach(k=>{const v=parseFloat(document.getElementById('m_'+k)?.value||'');if(v){entry[k]=v;any=true;}});
+  if(!any){toast('Enter at least one measurement');return;}
+  S.measurements.push(entry);save();openMeasurements();toast('Measurements saved');haptic(10);};
 
 // ---- CSV diary export ----
 window.exportDiary=()=>{
