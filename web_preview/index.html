@@ -604,6 +604,8 @@ function renderToday(){
         <h3 style="margin:0">Quick log</h3><span class="muted sm">tap → ${SLOTS.find(s=>s[0]===currentSlot())[1]}</span></div>
       <div class="hscroll">${quick}</div></div>`:''}
 
+    ${isToday?streakAlert():''}
+
     ${!isToday?`<div class="fade" style="background:var(--surfH);border-radius:14px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
       <span style="font-size:13px;color:var(--muted)">📅 Viewing past day — read only</span>
       <button class="ghost" style="width:auto;padding:5px 12px;font-size:12px" onclick="_viewDay=0;renderToday()">Today</button></div>`:''}
@@ -1031,23 +1033,36 @@ window.toggleFav=i=>{const f=DISPLAY[i];if(!f)return;const k=fkey(f);
   toast(S.usage[k].fav?'★ Saved to favorites':'Removed from favorites');};
 window.portion=i=>{const f=DISPLAY[i];if(!f)return;window._port={f,qty:f.lastQty||1};renderPortion();};
 function renderPortion(){const {f,qty}=window._port;const kc=Math.round(f.kcal*qty);
-  const chips=SLOTS.map(([k,n])=>`<button class="chip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}';document.querySelectorAll('.portChip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${n}</button>`).join('');
-  openSheet(`<h3>${dispName(f)}</h3><div class="muted sm">${f.kcal} kcal · ${f.serv}</div>
-    <div class="row" style="justify-content:center;gap:16px;margin:20px 0 14px;align-items:center">
+  const chips=SLOTS.map(([k,n])=>`<button class="chip portChip ${k===activeSlot?'on':''}" onclick="activeSlot='${k}'">${n}</button>`).join('');
+  const pDensity=f.kcal>0?Math.round(f.p/f.kcal*100):0;
+  const pScore=pDensity>=8?{c:'#BEF264',l:'High protein'}:pDensity>=5?{c:'#F6B73C',l:'Moderate protein'}:{c:'#5C6670',l:'Low protein'};
+  const micro=f.m||{};const hasMicro=Object.values(micro).some(v=>v>0);
+  openSheet(`<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+    <div style="font-size:48px;width:64px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--surfH);border-radius:18px;flex-shrink:0">${foodEmoji(f.name)}</div>
+    <div style="flex:1;min-width:0">
+      <h3 style="margin:0 0 2px;word-break:break-word">${dispName(f)}</h3>
+      <div class="muted sm">${f.brand||'Generic'} · ${f.serv}</div>
+      <div style="margin-top:4px"><span style="font-size:11px;font-weight:700;color:${pScore.c};background:${pScore.c}22;padding:2px 8px;border-radius:8px">${pScore.l}</span></div>
+    </div></div>
+    <div class="row" style="justify-content:center;gap:16px;margin:12px 0;align-items:center">
       <button onclick="portQty(-0.5)" style="background:none;border:none;cursor:pointer;padding:8px;line-height:0"><i class="ti ti-circle-minus" style="font-size:38px;color:#BEF264"></i></button>
       <div style="text-align:center;min-width:100px">
         <input type="number" id="portInput" value="${qty%1===0?qty:qty.toFixed(2)}" step="any" min="0.1"
           style="width:100%;background:none;border:none;color:#E7ECEF;text-align:center;font-size:34px;font-weight:800;outline:none;padding:0;-moz-appearance:textfield"
           oninput="portQtyDirect(this.value)">
-        <div class="muted sm">servings</div></div>
+        <div class="muted sm">× ${f.serv}</div></div>
       <button onclick="portQty(0.5)" style="background:none;border:none;cursor:pointer;padding:8px;line-height:0"><i class="ti ti-circle-plus" style="font-size:38px;color:#BEF264"></i></button></div>
-    <div class="row" style="justify-content:space-around;text-align:center;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-bottom:14px;padding:10px;background:var(--surfH);border-radius:14px">
       <div><div id="portKcal" style="font-size:18px;font-weight:800">${kc}</div><div class="muted sm">kcal</div></div>
       <div><div id="portProt" style="font-size:18px;font-weight:800;color:#2DD4BF">${Math.round(f.p*qty)}g</div><div class="muted sm">protein</div></div>
       <div><div id="portCarb" style="font-size:18px;font-weight:800;color:#F6B73C">${Math.round(f.c*qty)}g</div><div class="muted sm">carbs</div></div>
       <div><div id="portFat" style="font-size:18px;font-weight:800;color:#A78BFA">${Math.round(f.f*qty)}g</div><div class="muted sm">fat</div></div></div>
+    ${hasMicro?`<div style="font-size:12px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap">${
+      Object.entries(MTARGET).filter(([k])=>micro[k]>0).slice(0,6).map(([k,[tg,unit]])=>{
+        const v=micro[k]*qty;return`<span style="color:var(--muted)">${k.charAt(0).toUpperCase()+k.slice(1)}: <b style="color:var(--text)">${+(v.toFixed(1))}${unit}</b></span>`;}).join('')
+    }</div>`:''}
     <div style="margin-bottom:12px">${chips}</div>
-    <button class="btn" onclick="portAdd()">Add to ${SLOTS.find(s=>s[0]===activeSlot)[1]}</button>`);
+    <button class="btn" onclick="portAdd()">Add to ${SLOTS.find(s=>s[0]===activeSlot)?.[1]||'meal'}</button>`);
   setTimeout(()=>{const e=document.getElementById('portInput');if(e){e.focus();e.select();}},80);}
 window.portQty=d=>{const inp=document.getElementById('portInput');const cur=inp?parseFloat(inp.value)||window._port.qty:window._port.qty;
   window._port.qty=Math.max(0.1,+(cur+d).toFixed(2));const f=window._port.f,qty=window._port.qty;
@@ -2008,6 +2023,21 @@ function nutritionGrade(){
   const grade=score>=93?'A+':score>=87?'A':score>=80?'B+':score>=73?'B':score>=65?'C+':score>=55?'C':score>=45?'D':'F';
   const col=score>=80?'#BEF264':score>=60?'#F6B73C':'#F6735A';
   return{grade,score,col};}
+
+// ---- Streak protection alert ----
+function streakAlert(){
+  const h=new Date().getHours();if(h<18)return'';
+  const st=streak();if(st<2)return'';
+  const t=totals();if(t.kcal>200)return'';
+  return`<div class="card fade" style="border:.5px solid #F6B73C44;background:#F6B73C08;cursor:pointer" onclick="addFood('${currentSlot()}')">
+    <div class="row" style="gap:10px;align-items:center">
+      <span style="font-size:28px">⚠️</span>
+      <div style="flex:1">
+        <div style="font-weight:700;color:#F6B73C">Don\'t break your ${st}-day streak!</div>
+        <div class="muted sm">Log a meal before midnight to keep it going.</div>
+      </div>
+      <button class="btn" style="width:auto;padding:8px 14px;font-size:13px">Log now</button>
+    </div></div>`;}
 
 // ---- Auto dark mode ----
 function checkAutoDark(){const h=new Date().getHours();

@@ -1,7 +1,7 @@
 // Minimal offline cache for the MacroVault PWA shell.
 // Same-origin shell is cache-first; cross-origin calls (Open Food Facts,
 // Anthropic) always hit the network.
-const CACHE = 'mv-shell-v5';
+const CACHE = 'mv-shell-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
