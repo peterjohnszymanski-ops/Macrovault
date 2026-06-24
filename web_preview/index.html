@@ -681,6 +681,16 @@ function renderToday(){
     ${(()=>{const dp=deficitProjection();if(!dp||Math.abs(dp.lbsPerWeek)<0.05)return '';
       const dir=dp.lbsPerWeek<0?'losing':'gaining';const col=dp.lbsPerWeek<0?'#BEF264':'#F6B73C';
       const abs=Math.abs(dp.lbsPerWeek).toFixed(2);
+      const curWt=S.weight.length?S.weight[S.weight.length-1][1]:null;
+      const tw=GOAL.targetWeight;
+      let etaStr='';
+      if(curWt&&tw&&Math.abs(tw-curWt)>0.5){
+        const lbsLeft=Math.abs(tw-curWt);const rateCorrect=(tw<curWt&&dp.lbsPerWeek<0)||(tw>curWt&&dp.lbsPerWeek>0);
+        if(rateCorrect&&Math.abs(dp.lbsPerWeek)>0.01){const weeks=lbsLeft/Math.abs(dp.lbsPerWeek);
+          const eta=new Date();eta.setDate(eta.getDate()+Math.round(weeks*7));
+          etaStr=`<div style="margin-top:8px;padding:8px 10px;background:${col}11;border-radius:10px;font-size:12px;color:${col}">
+            🎯 At this rate, you'll reach ${tw} lbs by ~${eta.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</div>`;
+        }else if(!rateCorrect){etaStr=`<div class="muted sm" style="margin-top:6px;font-size:11px">⚠️ Current trend moves away from target weight</div>`;}}
       return `<div class="card fade" style="border:.5px solid ${col}33">
         <div class="row" style="gap:10px;align-items:center">
           <div style="font-size:30px">${dp.lbsPerWeek<0?'📉':'📈'}</div>
@@ -688,8 +698,7 @@ function renderToday(){
             <div style="font-size:13px;font-weight:700;color:${col}">${dir} ~${abs} lbs / week</div>
             <div class="muted sm">Avg intake ${fmt(dp.avg)} kcal · ${Math.abs(dp.dailyDelta)} kcal ${dp.dailyDelta<0?'deficit':'surplus'}/day</div>
             <div class="muted sm">${dp.days} days of data · ~${(Math.abs(dp.lbsPerWeek)*4.33).toFixed(1)} lbs/month</div>
-          </div>
-        </div></div>`;})()}
+          </div></div>${etaStr}</div>`;})()}
 
     <div class="card fade">
       <div class="row" style="justify-content:space-between;margin-bottom:10px">
@@ -1886,6 +1895,8 @@ function renderMore(){
     ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
     ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('🏋️','Saved workouts',S.workouts?.length?S.workouts.length+' workouts saved':'Save your workout routines','openWorkouts()')}
+    ${row('❤️','Vitals',S.vitals?.length?'Last: '+(S.vitals.slice(-1)[0]?.sys||'—')+'/'+(S.vitals.slice(-1)[0]?.dia||'—')+' mmHg':'Blood pressure & heart rate','openVitals()')}
     ${row('🏃','Activity calculator','Calculate calories burned for any exercise','openActivityCalc()')}
     ${row('⚡','Goal presets','Cutting · Bulking · Maintenance · High protein','openGoalPresets()')}
     ${row('🧑‍⚕️','Nutrition coach chat','Ask AI about your food, macros, and goals','openNutriChat()')}
@@ -2150,6 +2161,55 @@ function foodGroups(){const all=SLOTS.flatMap(([k])=>S.meals[k]);if(!all.length)
         <div style="font-size:11px;color:var(--muted)">${g.items.length?g.items.length+' item'+(g.items.length>1?'s':''):'—'}</div>
       </div>`).join('')}
     </div></div>`;}
+
+// ---- Saved workouts ----
+S.workouts=S.workouts||[];
+window.openWorkouts=()=>{
+  openSheet(`<h3>🏋️ Saved workouts</h3>
+    ${S.workouts.length?S.workouts.map((w,i)=>`<div class="fitem" style="cursor:pointer">
+      <div onclick="logWorkout(${i})" style="flex:1">
+        <div style="font-weight:600">${w.name}</div>
+        <div class="muted sm">${w.kcal} kcal · ${w.duration}min</div></div>
+      <button onclick="event.stopPropagation();S.workouts.splice(${i},1);save();openWorkouts()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">×</button>
+    </div>`).join(''):'<div class="muted sm" style="margin-bottom:12px">No saved workouts yet.</div>'}
+    <button class="ghost" style="margin-top:10px" onclick="addWorkout()"><i class="ti ti-plus"></i> Save new workout</button>`);};
+window.addWorkout=()=>{
+  const n=prompt('Workout name (e.g. "Chest day", "Morning run"):');if(!n?.trim())return;
+  const kcal=parseInt(prompt('Estimated calories burned:','350'));if(!kcal)return;
+  const dur=parseInt(prompt('Duration (minutes):','45'));if(!dur)return;
+  S.workouts.push({name:n.trim(),kcal,duration:dur});save();openWorkouts();toast('Workout saved');};
+window.logWorkout=i=>{const w=S.workouts[i];if(!w)return;
+  S.exercise[today()]=(S.exercise[today()]||0)+w.kcal;save();renderToday();closeSheet();toast('Logged: '+w.name+' (+'+w.kcal+' kcal)');};
+
+// ---- Blood pressure & resting heart rate ----
+S.vitals=S.vitals||[];
+window.openVitals=()=>{
+  const last=S.vitals.slice(-1)[0];
+  openSheet(`<h3>❤️ Vitals log</h3>
+    ${last?`<div class="card" style="margin-bottom:14px;text-align:center">
+      <div class="row" style="justify-content:space-around">
+        <div><div style="font-size:28px;font-weight:900;color:${last.sys>130?'#F6735A':'#BEF264'}">${last.sys}/${last.dia}</div><div class="muted sm">Blood pressure</div></div>
+        ${last.hr?`<div><div style="font-size:28px;font-weight:900;color:#F6735A">${last.hr}</div><div class="muted sm">Heart rate BPM</div></div>`:''}
+      </div><div class="muted sm" style="margin-top:6px">${last.date}</div></div>`:''}
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Log new reading</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      <div><div class="muted sm">Systolic</div><input id="vSys" class="in" type="number" placeholder="120"></div>
+      <div><div class="muted sm">Diastolic</div><input id="vDia" class="in" type="number" placeholder="80"></div>
+      <div><div class="muted sm">Heart rate</div><input id="vHr" class="in" type="number" placeholder="70"></div>
+    </div>
+    <button class="btn" onclick="saveVitals()">Save reading</button>
+    ${S.vitals.length>1?`<div style="margin-top:14px"><div class="muted sm" style="margin-bottom:8px">Recent readings</div>
+      ${S.vitals.slice(-7).reverse().map(v=>`<div style="font-size:13px;padding:6px 0;border-bottom:.5px solid var(--surfH)" class="row">
+        <span style="flex:1;color:var(--muted)">${v.date}</span>
+        <span style="color:${v.sys>130?'#F6735A':'#BEF264'};font-weight:700">${v.sys}/${v.dia}</span>
+        ${v.hr?`<span style="color:var(--muted);margin-left:12px">${v.hr} bpm</span>`:''}
+      </div>`).join('')}</div>`:''}`);}
+window.saveVitals=()=>{
+  const sys=parseInt(document.getElementById('vSys')?.value||'0');
+  const dia=parseInt(document.getElementById('vDia')?.value||'0');
+  if(!sys||!dia){toast('Enter systolic and diastolic');return;}
+  const hr=parseInt(document.getElementById('vHr')?.value||'0')||null;
+  S.vitals.push({date:today(),sys,dia,hr});save();openVitals();toast('Vitals logged');haptic(10);};
 
 // ---- Grocery list generator ----
 window.openGroceryList=()=>{
