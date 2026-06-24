@@ -552,7 +552,7 @@ function renderToday(){
   $('#view-today').innerHTML=`
     <div class="fade row" style="justify-content:space-between;align-items:center;margin:2px 2px 14px">
       <div style="flex:1">
-        <div style="font-size:21px;font-weight:800;letter-spacing:-.3px">${isToday?greeting()+', Peter':'Past day'}</div>
+        <div style="font-size:21px;font-weight:800;letter-spacing:-.3px;cursor:${isToday?'pointer':'default'}" ${isToday?`onclick="editName()"`:''}>${isToday?greeting()+', '+(localStorage.getItem('mv_name')||'there'):'Past day'}</div>
         <div class="muted sm">${dateLabel}</div></div>
       <div class="row" style="gap:4px;align-items:center">
         <button onclick="changeDay(-1)" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;font-size:20px;line-height:0;border-radius:10px"><i class="ti ti-chevron-left"></i></button>
@@ -1081,8 +1081,32 @@ window.logIdx=i=>{
   S.usage[k].f=f; S.usage[k].count++; S.usage[k].last=Date.now();
   save();afterLog();toast('Logged '+dispName(f));
 };
-window.quickAdd=()=>{const k=parseFloat(prompt('Calories to quick-add:','300'));if(!k)return;
-  S.meals[activeSlot].push({name:'Quick add',brand:'',kcal:k,p:0,c:0,f:0,qty:1,time:timeNow()});save();afterLog();toast('Quick added '+fmt(k)+' kcal');};
+window.quickAdd=()=>{
+  openSheet(`<h3>⚡ Quick add calories</h3>
+    <div class="muted sm" style="margin-bottom:12px">Log calories without searching for a food. Useful for estimates.</div>
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:48px;font-weight:900;letter-spacing:-2px;color:var(--accent)" id="qaDisplay">300</div>
+      <div class="muted sm">calories to log to ${SLOTS.find(s=>s[0]===activeSlot)?.[1]||'meal'}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+      ${[100,200,300,400,500,600,700,800].map(n=>`<button class="ghost" onclick="document.getElementById('qaDisplay').textContent='${n}'" style="padding:10px;font-size:15px;font-weight:700">${n}</button>`).join('')}
+    </div>
+    <input id="qaCustom" class="in" type="number" placeholder="Or enter custom calories…" oninput="document.getElementById('qaDisplay').textContent=this.value||'0'" style="margin-bottom:12px">
+    <div class="row" style="gap:8px;margin-bottom:6px">
+      <div style="flex:1"><div class="muted sm" style="margin-bottom:4px">Protein (optional)</div><input id="qaP" class="in" type="number" placeholder="g" style="margin:0"></div>
+      <div style="flex:1"><div class="muted sm" style="margin-bottom:4px">Carbs (optional)</div><input id="qaC" class="in" type="number" placeholder="g" style="margin:0"></div>
+      <div style="flex:1"><div class="muted sm" style="margin-bottom:4px">Fat (optional)</div><input id="qaF" class="in" type="number" placeholder="g" style="margin:0"></div>
+    </div>
+    <input id="qaName" class="in" placeholder="Label (optional — e.g. 'Office lunch')" style="margin-bottom:12px">
+    <button class="btn" onclick="doQuickAdd()">Log calories</button>`);};
+window.doQuickAdd=()=>{
+  const k=parseFloat(document.getElementById('qaDisplay')?.textContent)||0;if(!k)return toast('Enter calories');
+  const p=parseFloat(document.getElementById('qaP')?.value)||0;
+  const c=parseFloat(document.getElementById('qaC')?.value)||0;
+  const f=parseFloat(document.getElementById('qaF')?.value)||0;
+  const name=(document.getElementById('qaName')?.value||'Quick add').trim();
+  S.meals[activeSlot].push({name,brand:'',kcal:k,p,c,f,qty:1,time:timeNow()});
+  save();afterLog();closeSheet();toast('Logged '+fmt(k)+' kcal');};
 window.usuals=()=>{openSheet(`<h3>Your usuals</h3>
   <div class="fitem" onclick="logUsual()"><div><div><i class="ti ti-star star"></i> My usual breakfast</div>
   <div class="muted sm">Greek yogurt + Oats · 250 kcal</div></div><i class="ti ti-plus" style="color:#BEF264"></i></div>`);};
@@ -1097,6 +1121,16 @@ window.setWaterGoal=()=>{
     </div>
     <div class="muted sm" style="text-align:center">General recommendation: 2.5–3.5 L per day</div>`);};
 window.achieveHydration=()=>(S.water>=(GOAL.waterMl||2500));
+window.editName=()=>{
+  const cur=localStorage.getItem('mv_name')||'';
+  openSheet(`<h3>👤 Your name</h3>
+    <div class="muted sm" style="margin-bottom:12px">Personalize your greeting on the Today screen.</div>
+    <input id="nameIn" class="in" placeholder="Enter your first name" value="${cur}" maxlength="24">
+    <button class="btn" style="margin-top:10px" onclick="saveName()">Save</button>`);
+  setTimeout(()=>{const e=document.getElementById('nameIn');if(e){e.focus();e.select();}},80);};
+window.saveName=()=>{const v=(document.getElementById('nameIn')?.value||'').trim();
+  if(v)localStorage.setItem('mv_name',v);else localStorage.removeItem('mv_name');
+  closeSheet();renderToday();toast('Hi, '+(v||'there')+'!');haptic(15);};
 window.logWeight=()=>{const v=parseFloat(prompt('Log weight (lbs):',S.weight.length?S.weight[S.weight.length-1][1]:'180'));
   if(!v)return;S.weight.push([today(),v]);save();renderToday();toast('Weight logged');};
 
@@ -1774,6 +1808,7 @@ function renderMore(){
     ${row('📏','Body measurements',S.measHistory&&Object.keys(S.measHistory).length?'Last: '+Object.keys(S.measHistory).sort().slice(-1)[0]:'Track waist, arms, chest over time','logMeasurement()')}
     ${row('📥','Export today\'s log','Download as CSV file','exportCSV()')}
     ${row('🧪','Full micronutrients','Fiber, vitamins, minerals, sodium','openMicros()')}
+    ${row('👤','My profile','Hi, '+(localStorage.getItem('mv_name')||'there')+' · tap to change name','editName()')}
     ${row('🔒','Vault privacy lock',S.lock.enabled?'PIN protected':'Disabled','setupVaultLock()')}
     <div class="card" onclick="if(confirm('Reset all demo data?')){localStorage.removeItem('mv6');localStorage.removeItem('mv_goal');GOAL={cal:2200,p:176,c:200,f:61};S=load();renderAll();toast('Reset');}" style="cursor:pointer">
       <div class="row" style="gap:12px;align-items:center">
