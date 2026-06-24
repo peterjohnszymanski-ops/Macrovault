@@ -328,6 +328,7 @@ S.recipes=S.recipes||[];
 S.measHistory=S.measHistory||{};
 S.customFoods=S.customFoods||[];
 S.supps=S.supps||{items:[],log:{}};
+S.energy=S.energy||{};
 window._snapHistory=window._snapHistory||[];
 function load(){
   const raw=localStorage.getItem('mv6');
@@ -392,10 +393,20 @@ function donut(t,burned){
       arc(lp,0,'#2DD4BF')+arc(lc,-lp,'#F6B73C')+arc(lf,-(lp+lc),'#A78BFA');}
   const net=GOAL.cal+(burned||0)-t.kcal;
   const netCol=net<0?'#F6735A':'#E7ECEF';
-  return `<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="calories left" onclick="openDayFoodLog()" style="cursor:pointer;flex-shrink:0">
+  const pPct=tot>0?Math.round(pc/tot*100):0;
+  const cPct=tot>0?Math.round(cc/tot*100):0;
+  const fPct=tot>0?Math.round(fc/tot*100):0;
+  const donutSvg=`<svg width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="calories left" onclick="openDayFoodLog()" style="cursor:pointer;flex-shrink:0">
     <g transform="rotate(-90 60 60)">${arcs}</g>
     <text x="60" y="54" text-anchor="middle" fill="${netCol}" font-size="24" font-weight="800">${fmt(Math.abs(net))}</text>
     <text x="60" y="71" text-anchor="middle" fill="#8A949C" font-size="10">${net<0?'over':'cal left'}</text></svg>`;
+  if(!tot)return donutSvg;
+  return `<div style="flex-shrink:0;text-align:center">${donutSvg}
+    <div style="display:flex;gap:6px;justify-content:center;margin-top:4px">
+      <span style="font-size:9px;font-weight:700;color:#2DD4BF">P ${pPct}%</span>
+      <span style="font-size:9px;font-weight:700;color:#F6B73C">C ${cPct}%</span>
+      <span style="font-size:9px;font-weight:700;color:#A78BFA">F ${fPct}%</span>
+    </div></div>`;
 }
 function barRow(label,val,target,color){
   return `<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px">
@@ -636,6 +647,9 @@ function renderToday(){
           ${mealP>0?`<div style="margin-top:4px"><div class="row" style="justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px"><span>P: ${mealP}g</span><span>/${perMealPTarget}g target</span></div><div class="bar" style="height:4px"><i style="width:${pPct}%;background:#2DD4BF"></i></div></div>`:''}
         </div>${foodRows}`;}).join('')}
     </div>
+
+    ${isToday?energyCard():''}
+    ${isToday?foodGroups():''}
 
     ${(()=>{const a=achievements();return a.length?`<div class="fade" style="margin-bottom:14px">
       <div class="muted sm" style="margin-bottom:8px;padding-left:2px">🏆 Achievements</div>
@@ -1802,6 +1816,45 @@ function fastingCard(){const f=S.fasting;if(!f.startTs)return'';
     <div class="bar" style="height:6px"><i style="width:${pct}%;background:${col}"></i></div>
     <div class="muted sm" style="margin-top:4px">${Math.round(pct)}% of ${f.window}h fast · tap to manage</div>
   </div>`;}
+
+// ---- Energy level tracking ----
+window.logEnergy=lvl=>{S.energy[today()]=lvl;save();renderToday();toast(['','😴 Low energy logged','🥱 Below average','😐 Average energy','😊 Good energy','⚡ High energy!'][lvl]);haptic(10);};
+function energyCard(){const e=S.energy[today()];
+  const labels=['','Exhausted','Low','Average','Good','High'];
+  const cols=['','#F6735A','#F6B73C','#5C6670','#2DD4BF','#BEF264'];
+  return `<div class="card fade" style="margin-top:14px">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0">Energy today</h3>
+      ${e?`<span style="font-weight:700;color:${cols[e]}">${labels[e]} (${e}/5)</span>`:'<span class="muted sm">not logged</span>'}
+    </div>
+    <div class="row" style="gap:8px">
+      ${[1,2,3,4,5].map(n=>`<button onclick="logEnergy(${n})" style="flex:1;aspect-ratio:1;border-radius:14px;border:2px solid ${e===n?cols[n]:'var(--surfH)'};background:${e===n?cols[n]+'22':'var(--surfH)'};font-size:20px;cursor:pointer;transition:.15s">
+        ${['','😴','🥱','😐','😊','⚡'][n]}</button>`).join('')}
+    </div></div>`;}
+
+// ---- Food group summary ----
+function foodGroups(){const all=SLOTS.flatMap(([k])=>S.meals[k]);if(!all.length)return'';
+  const groups={protein:{e:'🍗',n:'Protein',items:[],color:'#2DD4BF'},grain:{e:'🌾',n:'Grains',items:[],color:'#F6B73C'},fruit:{e:'🍎',n:'Fruits',items:[],color:'#F6735A'},veg:{e:'🥦',n:'Veggies',items:[],color:'#BEF264'},dairy:{e:'🥛',n:'Dairy',items:[],color:'#A78BFA'},fat:{e:'🥑',n:'Fats',items:[],color:'#5C9EF6'}};
+  const classify=name=>{const n=name.toLowerCase();
+    if(/chicken|beef|pork|fish|egg|tuna|salmon|turkey|shrimp|steak|protein|whey|lamb|cod|tilapia/.test(n))return'protein';
+    if(/rice|bread|pasta|oat|cereal|wheat|quinoa|corn|tortilla|bagel|cracker|noodle/.test(n))return'grain';
+    if(/apple|banana|orange|berry|grape|mango|peach|pear|pineapple|strawberry|blueberry|cherry|melon/.test(n))return'fruit';
+    if(/broccoli|spinach|kale|salad|carrot|tomato|pepper|cucumber|onion|celery|lettuce|asparagus|zucchini/.test(n))return'veg';
+    if(/milk|cheese|yogurt|dairy|cream|butter/.test(n))return'dairy';
+    if(/olive oil|avocado|nut|almond|cashew|peanut|walnut|oil|coconut/.test(n))return'fat';
+    return null;};
+  all.forEach(x=>{const g=classify(x.name);if(g)groups[g].items.push(x.name);});
+  const filled=Object.values(groups).filter(g=>g.items.length);
+  if(!filled.length)return'';
+  return `<div class="card fade" style="margin-top:14px">
+    <h3 style="margin:0 0 10px">Food groups today</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${Object.values(groups).map(g=>`<div style="text-align:center;padding:8px;border-radius:12px;background:${g.items.length?g.color+'22':'var(--surfH)'};border:.5px solid ${g.items.length?g.color+'44':'transparent'}">
+        <div style="font-size:22px">${g.e}</div>
+        <div style="font-size:10px;font-weight:700;color:${g.items.length?g.color:'var(--muted)'};margin-top:2px">${g.n}</div>
+        <div style="font-size:11px;color:var(--muted)">${g.items.length?g.items.length+' item'+(g.items.length>1?'s':''):'—'}</div>
+      </div>`).join('')}
+    </div></div>`;}
 
 // ---- Grocery list generator ----
 window.openGroceryList=()=>{
