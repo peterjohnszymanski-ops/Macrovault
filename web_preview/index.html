@@ -557,6 +557,8 @@ function renderToday(){
           ${barRow('Protein',t.p,GOAL.p,'#2DD4BF')}
           ${barRow('Carbs',t.c,GOAL.c,'#F6B73C')}
           ${barRow('Fat',t.f,GOAL.f,'#A78BFA')}
+          ${mt.fiber>0?`<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px"><span style="color:#BEF264">Fiber</span><span class="muted">${Math.round(mt.fiber)} / ${MTARGET.fiber?.[0]||28} g</span></div><div class="bar"><i style="width:${Math.min(100,mt.fiber/(MTARGET.fiber?.[0]||28)*100)}%;background:#BEF264"></i></div></div>`:''}
+          ${mt.sodium>0?`<div style="margin-bottom:9px"><div class="row" style="justify-content:space-between;font-size:12px"><span style="color:${mt.sodium>2300?'#F6735A':'#F6B73C'}">Sodium</span><span class="muted">${Math.round(mt.sodium)} / ${MTARGET.sodium?.[0]||2300} mg</span></div><div class="bar"><i style="width:${Math.min(100,mt.sodium/(MTARGET.sodium?.[0]||2300)*100)}%;background:${mt.sodium>2300?'#F6735A':'#F6B73C'}"></i></div></div>`:''}
         </div>
       </div>
       <div class="row" style="margin-top:14px;padding-top:12px;border-top:.5px solid var(--surfH);gap:5px">
@@ -1696,9 +1698,11 @@ function renderMore(){
     ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
     ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('🧑‍⚕️','Nutrition coach chat','Ask AI about your food, macros, and goals','openNutriChat()')}
     ${row('⏱️','Intermittent fasting',S.fasting?.startTs?'Fast in progress — tap to manage':'Set up a fasting window (16:8, 18:6…)','openFasting()')}
     ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
     ${row('📤','Share today\'s summary','Copy or share your daily macro summary','shareSummary()')}
+    ${row('🛒','Grocery list','Build a shopping list from today\'s meals and recipes','openGroceryList()')}
     ${row('📖','My recipes',S.recipes.length?S.recipes.length+' saved recipes':'Create meal combos & save them','openRecipes()')}
     ${row('🥣','My foods',S.customFoods.length?S.customFoods.length+' custom foods saved':'Add foods not in the database','openCreateFood()')}
     ${(()=>{const todayLog=(S.supps?.log||{})[today()]||[];const total=(S.supps?.items||[]).length;
@@ -1798,6 +1802,65 @@ function fastingCard(){const f=S.fasting;if(!f.startTs)return'';
     <div class="bar" style="height:6px"><i style="width:${pct}%;background:${col}"></i></div>
     <div class="muted sm" style="margin-top:4px">${Math.round(pct)}% of ${f.window}h fast · tap to manage</div>
   </div>`;}
+
+// ---- Grocery list generator ----
+window.openGroceryList=()=>{
+  const items=new Map();
+  const add=(name,src)=>{const k=name.toLowerCase();items.set(k,{name,src,count:(items.get(k)?.count||0)+1});};
+  SLOTS.forEach(([k])=>S.meals[k].forEach(x=>add(x.name,SLOT_META[k]?.emoji||'🍽️')));
+  S.recipes.forEach(r=>r.ingredients.forEach(i=>add(i.f.name||i.name,'📖')));
+  const list=[...items.values()].sort((a,b)=>a.name.localeCompare(b.name));
+  const checkboxes=list.map(i=>`<label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:.5px solid var(--surfH);cursor:pointer">
+    <input type="checkbox" id="gl_${i.name.replace(/\W/g,'_')}" style="width:18px;height:18px;accent-color:var(--accent)">
+    <span>${i.src} ${i.name}${i.count>1?` <span class="muted sm">×${i.count}</span>`:''}</span></label>`).join('');
+  const text=list.map(i=>`• ${i.name}`).join('\n');
+  openSheet(`<h3>🛒 Grocery list</h3>
+    <div class="muted sm" style="margin-bottom:12px">Based on today's meals and saved recipes (${list.length} items)</div>
+    ${list.length?`<div>${checkboxes}</div>
+    <div class="row" style="gap:8px;margin-top:14px">
+      <button class="ghost" style="flex:1;font-size:13px" onclick="navigator.clipboard.writeText(${JSON.stringify(text)}).then(()=>toast('Copied!'))"><i class="ti ti-copy"></i> Copy list</button>
+      ${navigator.share?`<button class="ghost" style="flex:1;font-size:13px" onclick="navigator.share({title:'Grocery list',text:${JSON.stringify(text)}})"><i class="ti ti-share"></i> Share</button>`:''}
+    </div>`:'<div class="muted sm">Log some meals or add recipes to generate a list.</div>'}`);};
+
+// ---- AI nutritionist chat ----
+let _chatHistory=[];
+window.openNutriChat=()=>{
+  _chatHistory=_chatHistory||[];
+  openSheet(`<h3>🧑‍⚕️ Ask your nutritionist</h3>
+    <div id="chatMsgs" style="min-height:80px;max-height:40vh;overflow-y:auto;margin-bottom:10px">${renderChatMsgs()}</div>
+    <div style="display:flex;gap:8px">
+      <input id="chatIn" class="in" style="flex:1;margin:0" placeholder="Ask about your food, macros, goals…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn" style="width:auto;padding:10px 16px" onclick="sendChat()">Send</button>
+    </div>
+    <div class="hscroll" style="margin-top:8px">${['How\'s my protein intake?','What should I eat for dinner?','Am I eating enough vegetables?','How can I hit my calorie goal?'].map(q=>`<button class="qchip" style="white-space:nowrap" onclick="document.getElementById('chatIn').value=${JSON.stringify(q)};sendChat()">${q}</button>`).join('')}</div>`);
+  setTimeout(()=>{document.getElementById('chatIn')?.focus();scrollChatBottom();},80);};
+function renderChatMsgs(){if(!_chatHistory.length)return `<div class="muted sm" style="padding:8px 0">Ask me anything about your nutrition, food choices, or goals. I can see today\'s log.</div>`;
+  return _chatHistory.map(m=>`<div style="margin-bottom:10px;${m.r?'':'text-align:right'}">
+    <div style="display:inline-block;max-width:85%;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.5;background:${m.r?'var(--surfH)':'var(--accent)'};color:${m.r?'var(--text)':'#0E1217'}">${m.t}</div>
+    </div>`).join('');}
+function scrollChatBottom(){const b=document.getElementById('chatMsgs');if(b)setTimeout(()=>{b.scrollTop=b.scrollHeight;},50);}
+window.sendChat=async()=>{
+  const inp=document.getElementById('chatIn');if(!inp)return;
+  const q=inp.value.trim();if(!q)return;inp.value='';
+  const k=localStorage.getItem('aiKey');if(!k){toast('Set API key in More → Food photo AI');return;}
+  _chatHistory.push({t:q,r:false});
+  const msgs=document.getElementById('chatMsgs');if(msgs){msgs.innerHTML=renderChatMsgs();scrollChatBottom();}
+  const t=totals();
+  const todayCtx=`User's food log today:
+Calories: ${Math.round(t.kcal)}/${GOAL.cal} kcal | Protein: ${Math.round(t.p)}g/${GOAL.p}g | Carbs: ${Math.round(t.c)}g/${GOAL.c}g | Fat: ${Math.round(t.f)}g/${GOAL.f}g
+Water: ${(S.water/1000).toFixed(1)}L | Sleep last night: ${S.sleep[today()]||'not logged'}h | Steps: ${S.steps[today()]||0}
+Foods eaten: ${SLOTS.flatMap(([k])=>S.meals[k].map(x=>x.name+' ('+Math.round(x.kcal*x.qty)+' kcal)')).join(', ')||'nothing yet'}
+Streak: ${streak()} days`;
+  const history=_chatHistory.slice(-6).map(m=>({role:m.r?'assistant':'user',content:m.t}));
+  try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'x-api-key':k,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:aiModel(),max_tokens:400,
+      system:`You are a friendly, concise nutrition coach. You have access to the user's food log. Keep answers under 3 sentences. Be specific and actionable.\n\n${todayCtx}`,
+      messages:history})});
+    const d=await r.json();const reply=d.content?.[0]?.text||'Sorry, I couldn\'t respond.';
+    _chatHistory.push({t:reply,r:true});
+    if(msgs){msgs.innerHTML=renderChatMsgs();scrollChatBottom();}
+  }catch(e){toast('Error: '+e.message);}};
 
 // ---- AI weekly meal plan ----
 window.openWeeklyPlan=()=>{
