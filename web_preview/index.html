@@ -1137,6 +1137,24 @@ function renderProgress(){
     </div>
 
     ${(()=>{
+      const weeks=13;const days=weeks*7;const cells=[];
+      for(let i=days-1;i>=0;i--){const d=dayKey(-i);const h=S.history[d];
+        const pct=h&&h.logged?Math.min(1,h.kcal/GOAL.cal):0;
+        const col=!h||!h.logged?'var(--surfH)':h.kcal>GOAL.cal*1.1?'#F6B73C':pct>0.8?'#2DD4BF':pct>0.5?'#2DD4BF88':'#2DD4BF33';
+        cells.push({col,d,kcal:h?h.kcal:0});}
+      const cS=Math.max(10,Math.floor((Math.min(window.innerWidth||390,600)-40)/weeks));
+      const grid=cells.map(c=>`<div title="${c.d}${c.kcal?' · '+c.kcal+' cal':''}" style="width:${cS-2}px;height:${cS-2}px;border-radius:3px;background:${c.col}"></div>`).join('');
+      const logN=cells.filter(c=>c.kcal>0).length;
+      return `<div class="card fade"><div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h3 style="margin:0">Logging calendar</h3><span class="muted sm">${logN}/${days} days</span></div>
+        <div style="display:grid;grid-template-columns:repeat(${weeks},1fr);gap:2px">${grid}</div>
+        <div class="muted sm" style="margin-top:8px;display:flex;gap:10px">
+          <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#2DD4BF;margin-right:3px"></i>Logged</span>
+          <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#F6B73C;margin-right:3px"></i>Over goal</span>
+          <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--surfH);margin-right:3px"></i>No data</span>
+        </div></div>`; })()}
+
+    ${(()=>{
       const p30=(()=>{const a=[];for(let i=29;i>=0;i--){const d=dayKey(-i);const h=S.history[d];a.push({p:h?h.p||0:0,logged:h?h.logged:false});}return a;})();
       const p30max=Math.max(GOAL.p*1.2,...p30.map(x=>x.p),1);
       const pGoalLine=Math.round((1-GOAL.p/p30max)*100);
@@ -1670,6 +1688,8 @@ function renderMore(){
     ${row('👟','Steps',stps?stps.toLocaleString()+' today':'Tap to log','logSteps()')}
     ${row('💪','Gym coach',S.coach.enabled?'Alerts on':'Gym at '+fmtTime((+S.coach.gymTime.split(':')[0])*60+(+S.coach.gymTime.split(':')[1])),'openCoachSettings()')}
     ${row('🤖','Food photo AI',localStorage.getItem('anthropicKey')?'Claude AI enabled':'Set up API key','openKeySetup()')}
+    ${row('📅','Weekly meal plan','AI-generated 7-day plan based on your goals','openWeeklyPlan()')}
+    ${row('📤','Share today\'s summary','Copy or share your daily macro summary','shareSummary()')}
     ${row('📖','My recipes',S.recipes.length?S.recipes.length+' saved recipes':'Create meal combos & save them','openRecipes()')}
     ${row('🥣','My foods',S.customFoods.length?S.customFoods.length+' custom foods saved':'Add foods not in the database','openCreateFood()')}
     ${(()=>{const todayLog=(S.supps?.log||{})[today()]||[];const total=(S.supps?.items||[]).length;
@@ -1726,6 +1746,46 @@ function mealTimeline(){
           <div style="font-size:14px;font-weight:700;color:${s.color}">${fmt(s.kc)} cal</div>
         </div></div>`).join('')}
     </div></div>`;}
+
+// ---- AI weekly meal plan ----
+window.openWeeklyPlan=()=>{
+  openSheet(`<h3>📅 AI weekly meal plan</h3>
+    <div class="muted sm" style="margin-bottom:12px">Generate a full 7-day plan tailored to your goals.</div>
+    <div style="margin-bottom:10px"><div class="muted sm" style="margin-bottom:4px">Dietary preferences (optional)</div>
+    <input id="wpPrefs" class="in" placeholder="e.g. no pork, vegetarian Mondays, high protein"></div>
+    <div style="margin-bottom:14px"><div class="muted sm" style="margin-bottom:4px">Any foods you dislike?</div>
+    <input id="wpAvoid" class="in" placeholder="e.g. broccoli, shellfish"></div>
+    <button class="btn" id="wpBtn" onclick="genWeeklyPlan()">✨ Generate plan</button>
+    <div id="wpResult"></div>`);};
+window.genWeeklyPlan=async()=>{
+  const k=localStorage.getItem('aiKey');if(!k){toast('Set API key in More → Food photo AI');return;}
+  const btn=document.getElementById('wpBtn');if(!btn)return;
+  btn.disabled=true;btn.textContent='Generating…';
+  const prefs=document.getElementById('wpPrefs')?.value||'';
+  const avoid=document.getElementById('wpAvoid')?.value||'';
+  const prompt=`Create a practical 7-day meal plan (Monday–Sunday) for someone with these daily macro goals:
+Calories: ${GOAL.cal} kcal, Protein: ${GOAL.p}g, Carbs: ${GOAL.c}g, Fat: ${GOAL.f}g.
+${prefs?'Preferences: '+prefs+'.':''}${avoid?'\nAvoid: '+avoid+'.':''}
+For each day, list Breakfast, Lunch, Dinner, Snack with approximate calories and protein.
+Format as a clean table per day. Keep meals practical and realistic for home cooking.`;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'x-api-key':k,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:aiModel(),max_tokens:2000,messages:[{role:'user',content:prompt}]})});
+    const d=await r.json();const text=d.content?.[0]?.text||'No response';
+    const box=document.getElementById('wpResult');if(!box)return;
+    box.innerHTML=`<div style="margin-top:14px;padding:12px;background:var(--surfH);border-radius:12px;font-size:13px;line-height:1.7;white-space:pre-wrap">${text}</div>
+      <button class="ghost" style="margin-top:10px;font-size:13px" onclick="navigator.clipboard.writeText(${JSON.stringify(text)}).then(()=>toast('Copied!'))"><i class="ti ti-copy"></i> Copy plan</button>`;
+    if(btn){btn.disabled=false;btn.textContent='Regenerate';}
+  }catch(e){toast('Error: '+e.message);if(btn){btn.disabled=false;btn.textContent='Retry';}}};
+
+// ---- Share daily summary ----
+window.shareSummary=()=>{
+  const t=totals();const d=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+  const st=streak();
+  const text=`📊 MacroVault — ${d}\n\nCalories: ${Math.round(t.kcal)} / ${GOAL.cal} kcal (${Math.round(t.kcal/GOAL.cal*100)}%)\nProtein: ${Math.round(t.p)}g / ${GOAL.p}g\nCarbs: ${Math.round(t.c)}g / ${GOAL.c}g\nFat: ${Math.round(t.f)}g / ${GOAL.f}g\nWater: ${(S.water/1000).toFixed(1)}L\nStreak: ${st} day${st===1?'':'s'} 🔥\n\nLogged via MacroVault`;
+  if(navigator.share){navigator.share({title:'MacroVault daily summary',text});}
+  else{navigator.clipboard.writeText(text).then(()=>toast('Summary copied!'));}};
 
 // ---- Supplement tracker ----
 const SUPP_PRESETS=['Vitamin D3','Magnesium','Fish Oil','Creatine','Zinc','B12','Vitamin C','Protein Powder','Collagen','Multivitamin'];
